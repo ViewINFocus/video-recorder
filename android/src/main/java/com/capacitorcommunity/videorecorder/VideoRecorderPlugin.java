@@ -212,12 +212,12 @@ public class VideoRecorderPlugin extends Plugin {
             } else {
                 fancyCamera.setCameraPosition(1);
             }
-
-            if (!fancyCamera.cameraStarted()) {
-                startCamera();
-            }
         } else {
             fancyCamera.requestPermission();
+        }
+
+        if (fancyCamera.hasPermission() && !fancyCamera.cameraStarted()) {
+            startCamera();
         }
 
         this.call = call;
