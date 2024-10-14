@@ -267,6 +267,8 @@ public class VideoRecorder extends Plugin {
     @PluginMethod()
     public void startRecording(PluginCall call) {
         this.call = call;
+        fancyCamera.setAutoFocus(true);
+        fancyCamera.setMaxVideoBitrate(call.getInt("videoBitrate") != null ? call.getInt("videoBitrate") : 5400000);
         fancyCamera.startRecording();
         // call.success();
     }

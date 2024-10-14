@@ -9,7 +9,7 @@ export interface VideoRecorderPlugin {
   switchToPreviewFrame(options: { id: string }): Promise<void>;
   showPreviewFrame(config: { position: number; quality: number }): Promise<void>;
   hidePreviewFrame(): Promise<void>;
-  startRecording(): Promise<void>;
+  startRecording(config: VideoRecordingOptions): Promise<void>;
   stopRecording(): Promise<{
     videoUrl: string;
   }>;
@@ -47,6 +47,10 @@ export interface VideoRecorderOptions {
   quality?: VideoRecorderQuality;
   autoShow?: boolean;
   previewFrames?: VideoRecorderPreviewFrame[];
+}
+
+export interface VideoRecordingOptions {
+  videoBitrate?: number;
 }
 
 export enum VideoRecorderCamera {
