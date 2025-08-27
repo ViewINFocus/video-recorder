@@ -233,8 +233,6 @@ public class VideoRecorderPlugin extends Plugin {
                 fancyCamera.setCameraPosition(1);
                 currentCameraPositionInt = 1; // Front camera
             }
-        } else {
-            fancyCamera.requestPermission();
         }
 
         if (!fancyCamera.cameraStarted()) {
