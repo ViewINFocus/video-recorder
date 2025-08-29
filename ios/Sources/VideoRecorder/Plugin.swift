@@ -110,7 +110,7 @@ public func checkAuthorizationStatus(_ call: CAPPluginCall) -> Bool {
         call.reject("Camera permission not determined - please request permission first")
         return false
     }
-    
+
     let audioStatus = AVCaptureDevice.authorizationStatus(for: AVMediaType.audio)
     if (audioStatus == AVAuthorizationStatus.restricted) {
         call.reject("Microphone access restricted")
@@ -123,7 +123,7 @@ public func checkAuthorizationStatus(_ call: CAPPluginCall) -> Bool {
         call.reject("Microphone permission not determined - please request permission first")
         return false
     }
-    
+
     return true
 }
 
@@ -135,7 +135,7 @@ public func requestPermissions(_ call: CAPPluginCall) {
     var videoPermissionGranted = false
     var audioPermissionGranted = false
     var hasError = false
-    
+
     // Request video permission
     group.enter()
     AVCaptureDevice.requestAccess(for: .video) { granted in
@@ -146,7 +146,7 @@ public func requestPermissions(_ call: CAPPluginCall) {
         }
         group.leave()
     }
-    
+
     // Request audio permission
     group.enter()
     AVCaptureDevice.requestAccess(for: .audio) { granted in
@@ -157,7 +157,7 @@ public func requestPermissions(_ call: CAPPluginCall) {
         }
         group.leave()
     }
-    
+
     group.notify(queue: .main) {
         if !hasError && videoPermissionGranted && audioPermissionGranted {
             call.resolve(["granted": true])
@@ -283,12 +283,12 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
 	/**
 	* Request camera and microphone permissions - especially important for iPhone 16 Pro
 	*/
-    @objc func requestPermissions(_ call: CAPPluginCall) {
+    @objc override public func requestPermissions(_ call: CAPPluginCall) {
         let group = DispatchGroup()
         var videoPermissionGranted = false
         var audioPermissionGranted = false
         var hasError = false
-        
+
         // Request video permission
         group.enter()
         AVCaptureDevice.requestAccess(for: .video) { granted in
@@ -299,7 +299,7 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
             }
             group.leave()
         }
-        
+
         // Request audio permission
         group.enter()
         AVCaptureDevice.requestAccess(for: .audio) { granted in
@@ -310,7 +310,7 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
             }
             group.leave()
         }
-        
+
         group.notify(queue: .main) {
             if !hasError && videoPermissionGranted && audioPermissionGranted {
                 call.resolve(["granted": true])
@@ -324,8 +324,8 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
 	* { camera: Int, quality: Int }
 	*/
     @objc func initialize(_ call: CAPPluginCall) {
-        // log to console for initializing
-        print("Initializing camera")
+        print("VideoRecorder: Initialize called with options: \(String(describing: call.options))")
+        print("VideoRecorder: Device model: \(UIDevice.current.model), iOS version: \(UIDevice.current.systemVersion)")
 
         if (self.captureSession?.isRunning != true) {
             self.currentCamera = call.getInt("camera", 0)
@@ -339,7 +339,7 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
             self.currentFrameConfig = self.previewFrameConfigs.first!
 
             if checkAuthorizationStatus(call) {
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [self] in
                     do {
                         // Set webview to transparent and set the app window background to white
                         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
@@ -352,42 +352,80 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         var deviceTypes: [AVCaptureDevice.DeviceType] = [
                             .builtInWideAngleCamera
                         ]
-                        
+
                         // Add support for iPhone 16 Pro triple camera system
                         if #available(iOS 13.0, *) {
                             deviceTypes.append(.builtInTripleCamera)
                             deviceTypes.append(.builtInDualWideCamera)
                             deviceTypes.append(.builtInUltraWideCamera)
                         }
-                        
+
                         if #available(iOS 10.2, *) {
                             deviceTypes.append(.builtInDualCamera)
                         }
-                        
+
                         let deviceDescoverySession = AVCaptureDevice.DiscoverySession.init(
                             deviceTypes: deviceTypes,
                             mediaType: AVMediaType.video,
                             position: AVCaptureDevice.Position.unspecified)
 
+                        print("VideoRecorder: Discovering cameras for iPhone 16 Pro compatibility...")
+                        print("VideoRecorder: Available device types: \(deviceTypes)")
+                        
                         for device in deviceDescoverySession.devices {
+                            print("VideoRecorder: Found device - Type: \(device.deviceType), Position: \(device.position)")
+                            
                             if device.position == AVCaptureDevice.Position.back {
-                                // Prefer triple camera or dual camera for iPhone 16 Pro
-                                if self.backCamera == nil || 
-                                   device.deviceType == .builtInTripleCamera ||
-                                   device.deviceType == .builtInDualWideCamera {
+                                // Prioritize device selection for iPhone 16 Pro compatibility
+                                if self.backCamera == nil {
                                     self.backCamera = device
+                                    print("VideoRecorder: Set initial back camera: \(device.deviceType)")
+                                } else if device.deviceType == .builtInTripleCamera {
+                                    // Triple camera is highest priority for iPhone 16 Pro
+                                    self.backCamera = device
+                                    print("VideoRecorder: Updated to triple camera: \(device.deviceType)")
+                                } else if device.deviceType == .builtInDualWideCamera && self.backCamera?.deviceType != .builtInTripleCamera {
+                                    // Dual wide camera is second priority
+                                    self.backCamera = device
+                                    print("VideoRecorder: Updated to dual wide camera: \(device.deviceType)")
+                                } else if device.deviceType == .builtInDualCamera && 
+                                         self.backCamera?.deviceType != .builtInTripleCamera &&
+                                         self.backCamera?.deviceType != .builtInDualWideCamera {
+                                    // Dual camera is third priority
+                                    self.backCamera = device
+                                    print("VideoRecorder: Updated to dual camera: \(device.deviceType)")
                                 }
                             } else if device.position == AVCaptureDevice.Position.front {
-                                self.frontCamera = device
+                                // Apply same prioritization logic for front cameras on iPhone 16 Pro
+                                if self.frontCamera == nil {
+                                    self.frontCamera = device
+                                    print("VideoRecorder: Set initial front camera: \(device.deviceType)")
+                                } else if device.deviceType == .builtInTripleCamera {
+                                    // Triple camera is highest priority for front camera too
+                                    self.frontCamera = device
+                                    print("VideoRecorder: Updated to front triple camera: \(device.deviceType)")
+                                } else if device.deviceType == .builtInDualWideCamera && self.frontCamera?.deviceType != .builtInTripleCamera {
+                                    // Dual wide camera is second priority
+                                    self.frontCamera = device
+                                    print("VideoRecorder: Updated to front dual wide camera: \(device.deviceType)")
+                                } else if device.deviceType == .builtInDualCamera && 
+                                         self.frontCamera?.deviceType != .builtInTripleCamera &&
+                                         self.frontCamera?.deviceType != .builtInDualWideCamera {
+                                    // Dual camera is third priority
+                                    self.frontCamera = device
+                                    print("VideoRecorder: Updated to front dual camera: \(device.deviceType)")
+                                }
                             }
                         }
+                        
+                        print("VideoRecorder: Final camera selection - Back: \(self.backCamera?.deviceType ?? AVCaptureDevice.DeviceType.builtInWideAngleCamera), Front: \(self.frontCamera?.deviceType ?? AVCaptureDevice.DeviceType.builtInWideAngleCamera)")
 
                         // Improved fallback logic for advanced camera systems
                         if (self.backCamera == nil && self.frontCamera == nil) {
                             call.reject("No cameras available on this device")
                             return
                         }
-                        
+
                         // If no back camera but front camera exists, default to front
                         if (self.backCamera == nil) {
                             self.currentCamera = 0 // Use front camera
@@ -407,6 +445,11 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         // Add Camera Input
                         self.cameraInput = try createCaptureDeviceInput(currentCamera: self.currentCamera, frontCamera: self.frontCamera, backCamera: self.backCamera)
                         self.captureSession!.addInput(self.cameraInput!)
+                        
+                        // Configure camera device for iPhone 16 Pro compatibility
+                        if let device = self.cameraInput?.device {
+                            self.configureDeviceForCompatibility(device)
+                        }
                         // Add Microphone Input
                         let microphone = AVCaptureDevice.default(for: .audio)
                         if let audioInput = try? AVCaptureDeviceInput(device: microphone!), (self.captureSession?.canAddInput(audioInput))! {
@@ -482,16 +525,25 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         if autoShow {
                             self.cameraView.isHidden = false
                         }
+                        
+                        // Log camera capabilities for debugging iPhone 16 Pro issues
+                        self.logCameraCapabilities()
 
                     } catch CaptureError.backCameraUnavailable {
+                        print("VideoRecorder: Initialize failed - Back camera unavailable")
                         call.reject("Back camera unavailable")
                     } catch CaptureError.frontCameraUnavailable {
+                        print("VideoRecorder: Initialize failed - Front camera unavailable")
                         call.reject("Front camera unavailable")
-                    } catch CaptureError.couldNotCaptureInput( _){
+                    } catch CaptureError.couldNotCaptureInput(let error) {
+                        print("VideoRecorder: Initialize failed - Could not capture input: \(error)")
                         call.reject("Camera unavailable")
                     } catch {
+                        print("VideoRecorder: Initialize failed - Unexpected error: \(error)")
                         call.reject("Unexpected error")
                     }
+                    
+                    print("VideoRecorder: Initialize completed successfully")
                     call.resolve()
                 }
             }
@@ -539,41 +591,187 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
 	* Toggle between the front facing and rear facing camera.
 	*/
     @objc func flipCamera(_ call: CAPPluginCall) {
-        if (self.captureSession != nil) {
-            var input: AVCaptureDeviceInput? = nil
-            do {
-                self.currentCamera = self.currentCamera == 0 ? 1 : 0
-                input = try createCaptureDeviceInput(currentCamera: self.currentCamera, frontCamera: self.frontCamera, backCamera: self.backCamera)
-            } catch CaptureError.backCameraUnavailable {
-                self.currentCamera = self.currentCamera == 0 ? 1 : 0
-                call.reject("Back camera unavailable")
-            } catch CaptureError.frontCameraUnavailable {
-                self.currentCamera = self.currentCamera == 0 ? 1 : 0
-                call.reject("Front camera unavailable")
-            } catch CaptureError.couldNotCaptureInput( _) {
-                self.currentCamera = self.currentCamera == 0 ? 1 : 0
-                call.reject("Camera unavailable")
-            } catch {
-                self.currentCamera = self.currentCamera == 0 ? 1 : 0
-                call.reject("Unexpected error")
-            }
-
-            if (input != nil) {
-                let currentInput = self.cameraInput
-                self.captureSession?.beginConfiguration()
-                self.captureSession?.removeInput(currentInput!)
-                self.captureSession!.addInput(input!)
-                self.cameraInput = input
-                self.captureSession?.commitConfiguration()
-
-                // Update camera view to apply correct mirroring for the new camera
-                DispatchQueue.main.async {
-                    self.updateCameraView(self.currentFrameConfig)
-                }
-
-                call.resolve();
-            }
+        print("VideoRecorder: flipCamera called - Current camera: \(self.currentCamera)")
+        
+        guard self.captureSession != nil else {
+            print("VideoRecorder: No capture session available")
+            call.reject("Camera session not initialized")
+            return
         }
+        
+        guard self.captureSession!.isRunning else {
+            print("VideoRecorder: Capture session is not running")
+            call.reject("Camera session not running")
+            return
+        }
+
+        let newCamera = self.currentCamera == 0 ? 1 : 0
+        print("VideoRecorder: Attempting to switch to camera: \(newCamera)")
+        
+        // Check if target camera is available
+        if newCamera == 0 && self.frontCamera == nil {
+            print("VideoRecorder: Front camera not available")
+            call.reject("Front camera unavailable")
+            return
+        }
+        
+        if newCamera == 1 && self.backCamera == nil {
+            print("VideoRecorder: Back camera not available") 
+            call.reject("Back camera unavailable")
+            return
+        }
+
+        var input: AVCaptureDeviceInput? = nil
+        do {
+            self.currentCamera = newCamera
+            input = try createCaptureDeviceInput(currentCamera: self.currentCamera, frontCamera: self.frontCamera, backCamera: self.backCamera)
+            print("VideoRecorder: Successfully created input for camera: \(self.currentCamera)")
+        } catch CaptureError.backCameraUnavailable {
+            self.currentCamera = self.currentCamera == 0 ? 1 : 0
+            print("VideoRecorder: Back camera unavailable error")
+            call.reject("Back camera unavailable")
+            return
+        } catch CaptureError.frontCameraUnavailable {
+            self.currentCamera = self.currentCamera == 0 ? 1 : 0
+            print("VideoRecorder: Front camera unavailable error")
+            call.reject("Front camera unavailable")
+            return
+        } catch CaptureError.couldNotCaptureInput(let error) {
+            self.currentCamera = self.currentCamera == 0 ? 1 : 0
+            print("VideoRecorder: Could not capture input error: \(error)")
+            call.reject("Camera unavailable: \(error.localizedDescription)")
+            return
+        } catch {
+            self.currentCamera = self.currentCamera == 0 ? 1 : 0
+            print("VideoRecorder: Unexpected error: \(error)")
+            call.reject("Unexpected error: \(error.localizedDescription)")
+            return
+        }
+
+        guard let newInput = input else {
+            print("VideoRecorder: Failed to create camera input")
+            call.reject("Failed to create camera input")
+            return
+        }
+
+        let currentInput = self.cameraInput
+        
+        // Begin session configuration
+        self.captureSession?.beginConfiguration()
+        
+        // Remove current input
+        if let currentInput = currentInput {
+            print("VideoRecorder: Removing current input: \(currentInput.device.deviceType)")
+            self.captureSession?.removeInput(currentInput)
+        }
+        
+        // Add new input
+        if self.captureSession!.canAddInput(newInput) {
+            self.captureSession!.addInput(newInput)
+            self.cameraInput = newInput
+            print("VideoRecorder: Successfully added new input: \(newInput.device.deviceType)")
+        } else {
+            // Rollback on failure
+            if let currentInput = currentInput {
+                self.captureSession!.addInput(currentInput)
+                self.cameraInput = currentInput
+            }
+            self.captureSession?.commitConfiguration()
+            self.currentCamera = self.currentCamera == 0 ? 1 : 0
+            print("VideoRecorder: Cannot add new camera input")
+            call.reject("Cannot add new camera input")
+            return
+        }
+        
+        // Configure the new camera device for iPhone 16 Pro compatibility
+        configureDeviceForCompatibility(newInput.device)
+        
+        // Commit configuration
+        self.captureSession?.commitConfiguration()
+        print("VideoRecorder: Successfully committed session configuration")
+
+        // Update camera view to apply correct mirroring for the new camera
+        DispatchQueue.main.async {
+            self.updateCameraView(self.currentFrameConfig)
+            print("VideoRecorder: Updated camera view for new camera")
+        }
+
+        call.resolve()
+        print("VideoRecorder: flipCamera completed successfully")
+    }
+    
+    /**
+     * Configure camera device for iPhone 16 Pro compatibility
+     */
+    func configureDeviceForCompatibility(_ device: AVCaptureDevice) {
+        do {
+            try device.lockForConfiguration()
+            
+            print("VideoRecorder: Configuring device for compatibility: \(device.deviceType)")
+            
+            // Configure triple camera systems
+            if device.deviceType == .builtInTripleCamera {
+                // Set initial zoom factor to 2x to avoid ultra-wide fisheye effect
+                if device.videoZoomFactor < 2.0 && device.maxAvailableVideoZoomFactor >= 2.0 {
+                    device.videoZoomFactor = 2.0
+                    print("VideoRecorder: Set zoom factor to 2x for triple camera")
+                }
+                
+                // Note: primaryConstituentDeviceSwitchingBehavior is read-only and automatically managed by the system
+                if #available(iOS 15.0, *) {
+                    print("VideoRecorder: Triple camera auto switching behavior: \(device.primaryConstituentDeviceSwitchingBehavior.rawValue)")
+                }
+            }
+            
+            // Configure dual wide camera systems 
+            else if device.deviceType == .builtInDualWideCamera {
+                if #available(iOS 15.0, *) {
+                    print("VideoRecorder: Dual wide camera auto switching behavior: \(device.primaryConstituentDeviceSwitchingBehavior.rawValue)")
+                }
+            }
+            
+            // Configure dual camera systems
+            else if device.deviceType == .builtInDualCamera {
+                if #available(iOS 15.0, *) {
+                    print("VideoRecorder: Dual camera auto switching behavior: \(device.primaryConstituentDeviceSwitchingBehavior.rawValue)")
+                }
+            }
+            
+            device.unlockForConfiguration()
+        } catch {
+            print("VideoRecorder: Failed to configure camera device: \(error)")
+        }
+    }
+    
+    /**
+     * Debug helper to print all available camera information
+     */
+    func logCameraCapabilities() {
+        print("VideoRecorder: === Camera Capabilities Debug ===")
+        
+        if let frontDevice = self.frontCamera {
+            print("VideoRecorder: Front camera - Type: \(frontDevice.deviceType), Unique ID: \(frontDevice.uniqueID)")
+            print("VideoRecorder: Front camera - Min zoom: \(frontDevice.minAvailableVideoZoomFactor), Max zoom: \(frontDevice.maxAvailableVideoZoomFactor)")
+            if #available(iOS 15.0, *) {
+                print("VideoRecorder: Front camera - Switching behavior: \(frontDevice.primaryConstituentDeviceSwitchingBehavior.rawValue)")
+            }
+        } else {
+            print("VideoRecorder: Front camera - Not available")
+        }
+        
+        if let backDevice = self.backCamera {
+            print("VideoRecorder: Back camera - Type: \(backDevice.deviceType), Unique ID: \(backDevice.uniqueID)")
+            print("VideoRecorder: Back camera - Min zoom: \(backDevice.minAvailableVideoZoomFactor), Max zoom: \(backDevice.maxAvailableVideoZoomFactor)")
+            if #available(iOS 15.0, *) {
+                print("VideoRecorder: Back camera - Switching behavior: \(backDevice.primaryConstituentDeviceSwitchingBehavior.rawValue)")
+            }
+        } else {
+            print("VideoRecorder: Back camera - Not available")
+        }
+        
+        print("VideoRecorder: Current camera index: \(self.currentCamera)")
+        print("VideoRecorder: Capture session running: \(self.captureSession?.isRunning ?? false)")
+        print("VideoRecorder: === End Camera Capabilities Debug ===")
     }
 
 	/**
@@ -727,6 +925,25 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         if let connection = self.cameraView.videoPreviewLayer?.connection {
             connection.automaticallyAdjustsVideoMirroring = false
             connection.isVideoMirrored = self.currentCamera == 0 ? config.mirrorFrontCam : false
+        }
+        
+        // Refresh camera preview layer for iPhone 16 Pro compatibility
+        self.refreshCameraPreview()
+    }
+    
+    func refreshCameraPreview() {
+        DispatchQueue.main.async {
+            // Force refresh the preview layer to handle iPhone 16 Pro display issues
+            if let previewLayer = self.cameraView?.videoPreviewLayer {
+                previewLayer.setNeedsLayout()
+                previewLayer.layoutIfNeeded()
+                
+                // Ensure the connection is properly configured
+                if let connection = previewLayer.connection {
+                    connection.isEnabled = false
+                    connection.isEnabled = true
+                }
+            }
         }
     }
 
