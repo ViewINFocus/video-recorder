@@ -386,22 +386,26 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                             print("VideoRecorder: Found device - Type: \(device.deviceType), Position: \(device.position)")
                             
                             if device.position == AVCaptureDevice.Position.back {
-                                // Prioritize device selection for iPhone 16 Pro compatibility
+                                // For iPhone 16 Pro, prioritize standard wide angle camera initially for better compatibility
                                 if self.backCamera == nil {
                                     self.backCamera = device
                                     print("VideoRecorder: Set initial back camera: \(device.deviceType)")
-                                } else if device.deviceType == .builtInTripleCamera {
-                                    // Triple camera is highest priority for iPhone 16 Pro
+                                } else if device.deviceType == .builtInWideAngleCamera && self.backCamera?.deviceType != .builtInWideAngleCamera {
+                                    // For iPhone 16 Pro stability, prefer wide angle camera
                                     self.backCamera = device
-                                    print("VideoRecorder: Updated to triple camera: \(device.deviceType)")
-                                } else if device.deviceType == .builtInDualWideCamera && self.backCamera?.deviceType != .builtInTripleCamera {
-                                    // Dual wide camera is second priority
+                                    print("VideoRecorder: Updated to wide angle camera for iPhone 16 Pro compatibility: \(device.deviceType)")
+                                } else if device.deviceType == .builtInTripleCamera && self.backCamera?.deviceType == .builtInWideAngleCamera {
+                                    // Keep wide angle for now, but store triple camera as backup
+                                    print("VideoRecorder: Found triple camera but keeping wide angle for startup: \(device.deviceType)")
+                                } else if device.deviceType == .builtInDualWideCamera && self.backCamera?.deviceType != .builtInWideAngleCamera && self.backCamera?.deviceType != .builtInTripleCamera {
+                                    // Dual wide camera is lower priority
                                     self.backCamera = device
                                     print("VideoRecorder: Updated to dual wide camera: \(device.deviceType)")
                                 } else if device.deviceType == .builtInDualCamera && 
+                                         self.backCamera?.deviceType != .builtInWideAngleCamera &&
                                          self.backCamera?.deviceType != .builtInTripleCamera &&
                                          self.backCamera?.deviceType != .builtInDualWideCamera {
-                                    // Dual camera is third priority
+                                    // Dual camera is lowest priority
                                     self.backCamera = device
                                     print("VideoRecorder: Updated to dual camera: \(device.deviceType)")
                                 }
@@ -410,15 +414,19 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                                 if self.frontCamera == nil {
                                     self.frontCamera = device
                                     print("VideoRecorder: Set initial front camera: \(device.deviceType)")
-                                } else if device.deviceType == .builtInTripleCamera {
-                                    // Triple camera is highest priority for front camera too
+                                } else if device.deviceType == .builtInWideAngleCamera && self.frontCamera?.deviceType != .builtInWideAngleCamera {
+                                    // Prefer wide angle for front camera too
                                     self.frontCamera = device
-                                    print("VideoRecorder: Updated to front triple camera: \(device.deviceType)")
-                                } else if device.deviceType == .builtInDualWideCamera && self.frontCamera?.deviceType != .builtInTripleCamera {
+                                    print("VideoRecorder: Updated to front wide angle camera: \(device.deviceType)")
+                                } else if device.deviceType == .builtInTripleCamera && self.frontCamera?.deviceType == .builtInWideAngleCamera {
+                                    // Keep wide angle for stability
+                                    print("VideoRecorder: Found front triple camera but keeping wide angle: \(device.deviceType)")
+                                } else if device.deviceType == .builtInDualWideCamera && self.frontCamera?.deviceType != .builtInWideAngleCamera && self.frontCamera?.deviceType != .builtInTripleCamera {
                                     // Dual wide camera is second priority
                                     self.frontCamera = device
                                     print("VideoRecorder: Updated to front dual wide camera: \(device.deviceType)")
                                 } else if device.deviceType == .builtInDualCamera && 
+                                         self.frontCamera?.deviceType != .builtInWideAngleCamera &&
                                          self.frontCamera?.deviceType != .builtInTripleCamera &&
                                          self.frontCamera?.deviceType != .builtInDualWideCamera {
                                     // Dual camera is third priority
@@ -590,13 +598,14 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         // Start running sessions with iPhone 16 Pro specific handling
                         print("VideoRecorder: Starting capture session...")
                         
-                        // For iPhone 16 Pro, ensure session starts on main queue
-                        DispatchQueue.main.async {
-                            if let session = self.captureSession, !session.isRunning {
+                        // For iPhone 16 Pro, start session immediately and handle startup verification
+                        if let session = self.captureSession {
+                            // Start session on background queue to avoid blocking
+                            DispatchQueue.global(qos: .userInitiated).async {
                                 session.startRunning()
                                 
-                                // Verify session actually started
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                // Verify session started on main queue
+                                DispatchQueue.main.async {
                                     if session.isRunning {
                                         print("VideoRecorder: Capture session successfully started - Running: \(session.isRunning)")
                                         
@@ -606,8 +615,9 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                                         }
                                     } else {
                                         print("VideoRecorder: WARNING - Capture session failed to start!")
-                                        // Attempt to restart session for iPhone 16 Pro
-                                        session.startRunning()
+                                        
+                                        // For iPhone 16 Pro, try different session presets if initial startup fails
+                                        self.retrySessionStartupForIPhone16Pro()
                                     }
                                 }
                             }
@@ -703,9 +713,28 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         }
         
         guard self.captureSession!.isRunning else {
-            print("VideoRecorder: Capture session is not running")
-            call.reject("Camera session not running")
-            return
+            print("VideoRecorder: Capture session is not running - attempting to start session")
+            
+            // Try to start the session for iPhone 16 Pro
+            if let session = self.captureSession {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    session.startRunning()
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        if session.isRunning {
+                            print("VideoRecorder: Session started successfully, retrying camera flip")
+                            self.flipCamera(call)  // Retry the flip operation
+                        } else {
+                            print("VideoRecorder: Failed to start session for camera flip")
+                            call.reject("Camera session could not be started")
+                        }
+                    }
+                }
+                return
+            } else {
+                call.reject("Camera session not running")
+                return
+            }
         }
 
         let newCamera = self.currentCamera == 0 ? 1 : 0
@@ -911,6 +940,104 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         print("VideoRecorder: Current camera index: \(self.currentCamera)")
         print("VideoRecorder: Capture session running: \(self.captureSession?.isRunning ?? false)")
         print("VideoRecorder: === End Camera Capabilities Debug ===")
+    }
+    
+    /**
+     * Retry session startup specifically for iPhone 16 Pro triple camera issues
+     */
+    func retrySessionStartupForIPhone16Pro() {
+        print("VideoRecorder: Attempting iPhone 16 Pro session recovery...")
+        
+        guard let session = self.captureSession else { return }
+        
+        // Stop current session if running
+        if session.isRunning {
+            session.stopRunning()
+        }
+        
+        // Try different session presets for iPhone 16 Pro compatibility
+        let fallbackPresets: [AVCaptureSession.Preset] = [
+            .medium,
+            .low,
+            .hd1280x720,
+            .vga640x480
+        ]
+        
+        session.beginConfiguration()
+        
+        for preset in fallbackPresets {
+            if session.canSetSessionPreset(preset) {
+                session.sessionPreset = preset
+                print("VideoRecorder: Trying fallback preset for iPhone 16 Pro: \(preset.rawValue)")
+                break
+            }
+        }
+        
+        // For iPhone 16 Pro triple camera, try switching to standard wide angle first
+        if let tripleCamera = self.backCamera, tripleCamera.deviceType == .builtInTripleCamera {
+            print("VideoRecorder: iPhone 16 Pro detected - attempting wide angle fallback")
+            
+            // Look for a standard wide angle camera as fallback
+            let deviceDiscoverySession = AVCaptureDevice.DiscoverySession(
+                deviceTypes: [.builtInWideAngleCamera],
+                mediaType: .video,
+                position: .back
+            )
+            
+            if let wideAngleCamera = deviceDiscoverySession.devices.first {
+                do {
+                    // Remove current camera input
+                    if let currentInput = self.cameraInput {
+                        session.removeInput(currentInput)
+                    }
+                    
+                    // Add wide angle camera input
+                    let wideAngleInput = try AVCaptureDeviceInput(device: wideAngleCamera)
+                    if session.canAddInput(wideAngleInput) {
+                        session.addInput(wideAngleInput)
+                        self.cameraInput = wideAngleInput
+                        print("VideoRecorder: Switched to wide angle camera for iPhone 16 Pro compatibility")
+                    }
+                } catch {
+                    print("VideoRecorder: Failed to switch to wide angle camera: \(error)")
+                    // Revert to original triple camera
+                    if let originalInput = self.cameraInput, session.canAddInput(originalInput) {
+                        session.addInput(originalInput)
+                    }
+                }
+            }
+        }
+        
+        session.commitConfiguration()
+        
+        // Try starting session again after configuration changes
+        DispatchQueue.global(qos: .userInitiated).async {
+            session.startRunning()
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if session.isRunning {
+                    print("VideoRecorder: iPhone 16 Pro session recovery successful!")
+                } else {
+                    print("VideoRecorder: iPhone 16 Pro session recovery failed")
+                    
+                    // Last resort: try without any preset
+                    session.beginConfiguration()
+                    session.sessionPreset = .inputPriority
+                    session.commitConfiguration()
+                    
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        session.startRunning()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            if session.isRunning {
+                                print("VideoRecorder: iPhone 16 Pro session started with inputPriority preset")
+                            } else {
+                                print("VideoRecorder: CRITICAL - iPhone 16 Pro session startup completely failed")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
 	/**
