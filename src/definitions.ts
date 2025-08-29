@@ -1,6 +1,7 @@
 import type { PluginListenerHandle } from '@capacitor/core';
 
 export interface VideoRecorderPlugin {
+  requestPermissions(): Promise<{ granted: boolean }>;
   initialize(options?: VideoRecorderOptions): Promise<void>;
   destroy(): Promise<void>;
   flipCamera(): Promise<void>;

@@ -81,6 +81,18 @@ export class VideoRecorderWeb extends WebPlugin implements VideoRecorderPlugin {
 		this.videoElement.style.boxShadow = `0 0 ${config.dropShadow?.radius}px 0 rgba(${config.dropShadow?.color}, ${config.dropShadow?.opacity})`;
 	}
 
+	async requestPermissions(): Promise<{ granted: boolean }> {
+		console.warn('VideoRecorder: Web implementation - requesting camera and microphone permissions');
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+			stream.getTracks().forEach(track => track.stop()); // Stop immediately after checking permissions
+			return Promise.resolve({ granted: true });
+		} catch (error) {
+			console.error('VideoRecorder: Permission denied', error);
+			return Promise.resolve({ granted: false });
+		}
+	}
+
 	async initialize(options?: VideoRecorderOptions): Promise<void> {
 		console.warn('VideoRecorder: Web implementation is currently for mock purposes only, recording is not available');
 		const previewFrames = options?.previewFrames?.length !== undefined && options?.previewFrames?.length > 0 ? options?.previewFrames : [{id: 'default'}];

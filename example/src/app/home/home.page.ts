@@ -110,6 +110,7 @@ export class HomePage implements OnInit, OnDestroy {
     if (this.initialized) {
       return;
     }
+    await VideoRecorder.requestPermissions();
     await VideoRecorder.initialize({
       camera: this.cameraSide,
       previewFrames: [config],

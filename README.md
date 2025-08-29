@@ -129,6 +129,7 @@ The demo app can be found in the Example folder of this repo
 
 <docgen-index>
 
+* [`requestPermissions()`](#requestpermissions)
 * [`initialize(...)`](#initialize)
 * [`destroy()`](#destroy)
 * [`flipCamera()`](#flipcamera)
@@ -153,6 +154,17 @@ The demo app can be found in the Example folder of this repo
 
 <docgen-api>
 <!--Update the source file JSDoc comments and rerun docgen to update the docs below-->
+
+### requestPermissions()
+
+```typescript
+requestPermissions() => Promise<{ granted: boolean; }>
+```
+
+**Returns:** <code>Promise&lt;{ granted: boolean; }&gt;</code>
+
+--------------------
+
 
 ### initialize(...)
 

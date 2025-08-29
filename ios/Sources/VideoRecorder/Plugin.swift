@@ -105,7 +105,12 @@ public func checkAuthorizationStatus(_ call: CAPPluginCall) -> Bool {
     } else if videoStatus == AVAuthorizationStatus.denied {
         call.reject("Camera access denied")
         return false
+    } else if videoStatus == AVAuthorizationStatus.notDetermined {
+        // For iPhone 16 Pro and iOS 18, we should request permission first
+        call.reject("Camera permission not determined - please request permission first")
+        return false
     }
+    
     let audioStatus = AVCaptureDevice.authorizationStatus(for: AVMediaType.audio)
     if (audioStatus == AVAuthorizationStatus.restricted) {
         call.reject("Microphone access restricted")
@@ -113,8 +118,51 @@ public func checkAuthorizationStatus(_ call: CAPPluginCall) -> Bool {
     } else if audioStatus == AVAuthorizationStatus.denied {
         call.reject("Microphone access denied")
         return false
+    } else if audioStatus == AVAuthorizationStatus.notDetermined {
+        // For iPhone 16 Pro and iOS 18, we should request permission first
+        call.reject("Microphone permission not determined - please request permission first")
+        return false
     }
+    
     return true
+}
+
+/**
+ * Request camera and microphone permissions for iPhone 16 Pro compatibility
+ */
+public func requestPermissions(_ call: CAPPluginCall) {
+    let group = DispatchGroup()
+    var videoPermissionGranted = false
+    var audioPermissionGranted = false
+    var hasError = false
+    
+    // Request video permission
+    group.enter()
+    AVCaptureDevice.requestAccess(for: .video) { granted in
+        videoPermissionGranted = granted
+        if !granted {
+            hasError = true
+            call.reject("Camera permission denied")
+        }
+        group.leave()
+    }
+    
+    // Request audio permission
+    group.enter()
+    AVCaptureDevice.requestAccess(for: .audio) { granted in
+        audioPermissionGranted = granted
+        if !granted {
+            hasError = true
+            call.reject("Microphone permission denied")
+        }
+        group.leave()
+    }
+    
+    group.notify(queue: .main) {
+        if !hasError && videoPermissionGranted && audioPermissionGranted {
+            call.resolve(["granted": true])
+        }
+    }
 }
 
 enum CaptureError: Error {
@@ -164,6 +212,7 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
     public let identifier = "VideoRecorder"
     public let jsName = "VideoRecorder"
     public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "initialize", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "destroy", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "flipCamera", returnType: CAPPluginReturnPromise),
@@ -231,6 +280,44 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         self.notifyListeners("onVolumeInput", data: ["value":averagePower])
     }
 
+	/**
+	* Request camera and microphone permissions - especially important for iPhone 16 Pro
+	*/
+    @objc func requestPermissions(_ call: CAPPluginCall) {
+        let group = DispatchGroup()
+        var videoPermissionGranted = false
+        var audioPermissionGranted = false
+        var hasError = false
+        
+        // Request video permission
+        group.enter()
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            videoPermissionGranted = granted
+            if !granted {
+                hasError = true
+                call.reject("Camera permission denied")
+            }
+            group.leave()
+        }
+        
+        // Request audio permission
+        group.enter()
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            audioPermissionGranted = granted
+            if !granted {
+                hasError = true
+                call.reject("Microphone permission denied")
+            }
+            group.leave()
+        }
+        
+        group.notify(queue: .main) {
+            if !hasError && videoPermissionGranted && audioPermissionGranted {
+                call.resolve(["granted": true])
+            }
+        }
+    }
+
 
 	/**
 	* Initializes the camera.
@@ -261,21 +348,49 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         self.capWebView?.isOpaque = false
                         self.capWebView?.backgroundColor = UIColor.clear
 
+                        // Support multiple camera types for iPhone 16 Pro and other advanced devices
+                        var deviceTypes: [AVCaptureDevice.DeviceType] = [
+                            .builtInWideAngleCamera
+                        ]
+                        
+                        // Add support for iPhone 16 Pro triple camera system
+                        if #available(iOS 13.0, *) {
+                            deviceTypes.append(.builtInTripleCamera)
+                            deviceTypes.append(.builtInDualWideCamera)
+                            deviceTypes.append(.builtInUltraWideCamera)
+                        }
+                        
+                        if #available(iOS 10.2, *) {
+                            deviceTypes.append(.builtInDualCamera)
+                        }
+                        
                         let deviceDescoverySession = AVCaptureDevice.DiscoverySession.init(
-                            deviceTypes: [AVCaptureDevice.DeviceType.builtInWideAngleCamera],
+                            deviceTypes: deviceTypes,
                             mediaType: AVMediaType.video,
                             position: AVCaptureDevice.Position.unspecified)
 
                         for device in deviceDescoverySession.devices {
                             if device.position == AVCaptureDevice.Position.back {
-                                self.backCamera = device
+                                // Prefer triple camera or dual camera for iPhone 16 Pro
+                                if self.backCamera == nil || 
+                                   device.deviceType == .builtInTripleCamera ||
+                                   device.deviceType == .builtInDualWideCamera {
+                                    self.backCamera = device
+                                }
                             } else if device.position == AVCaptureDevice.Position.front {
                                 self.frontCamera = device
                             }
                         }
 
+                        // Improved fallback logic for advanced camera systems
+                        if (self.backCamera == nil && self.frontCamera == nil) {
+                            call.reject("No cameras available on this device")
+                            return
+                        }
+                        
+                        // If no back camera but front camera exists, default to front
                         if (self.backCamera == nil) {
-                            self.currentCamera = 1
+                            self.currentCamera = 0 // Use front camera
                         }
 
                         // Create capture session
