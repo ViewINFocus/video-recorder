@@ -85,10 +85,20 @@ class CameraView: UIView {
     }
 
     func addPreviewLayer(_ previewLayer:AVCaptureVideoPreviewLayer?) {
-        previewLayer!.videoGravity = AVLayerVideoGravity.resizeAspectFill
-        previewLayer!.frame = self.bounds
-        self.layer.addSublayer(previewLayer!)
-        self.videoPreviewLayer = previewLayer;
+        guard let previewLayer = previewLayer else { return }
+        
+        previewLayer.videoGravity = AVLayerVideoGravity.resizeAspectFill
+        previewLayer.frame = self.bounds
+        
+        // Ensure proper layer positioning for iPhone 16 Pro
+        self.layer.addSublayer(previewLayer)
+        self.videoPreviewLayer = previewLayer
+        
+        // Force immediate layout update
+        previewLayer.setNeedsLayout()
+        previewLayer.layoutIfNeeded()
+        
+        print("VideoRecorder: Preview layer added - Frame: \(previewLayer.frame), Session: \(previewLayer.session != nil)")
     }
 
     func removePreviewLayer() {
@@ -442,9 +452,25 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                          * Video file recording capture session
                          */
                         self.captureSession?.usesApplicationAudioSession = true
-                        // Add Camera Input
-                        self.cameraInput = try createCaptureDeviceInput(currentCamera: self.currentCamera, frontCamera: self.frontCamera, backCamera: self.backCamera)
-                        self.captureSession!.addInput(self.cameraInput!)
+                        
+                        // Add Camera Input with enhanced error handling for iPhone 16 Pro
+                        do {
+                            self.cameraInput = try createCaptureDeviceInput(currentCamera: self.currentCamera, frontCamera: self.frontCamera, backCamera: self.backCamera)
+                            
+                            // Verify we can add the camera input before proceeding
+                            if self.captureSession!.canAddInput(self.cameraInput!) {
+                                self.captureSession!.addInput(self.cameraInput!)
+                                print("VideoRecorder: Camera input successfully added - Device: \(self.cameraInput!.device.deviceType)")
+                            } else {
+                                print("VideoRecorder: Cannot add camera input to session")
+                                call.reject("Cannot add camera input to session")
+                                return
+                            }
+                        } catch {
+                            print("VideoRecorder: Failed to create camera input: \(error)")
+                            call.reject("Failed to create camera input: \(error.localizedDescription)")
+                            return
+                        }
                         
                         // Configure camera device for iPhone 16 Pro compatibility
                         if let device = self.cameraInput?.device {
@@ -454,42 +480,87 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         let microphone = AVCaptureDevice.default(for: .audio)
                         if let audioInput = try? AVCaptureDeviceInput(device: microphone!), (self.captureSession?.canAddInput(audioInput))! {
                             self.captureSession!.addInput(audioInput)
+                            print("VideoRecorder: Audio input successfully added")
+                        } else {
+                            print("VideoRecorder: Warning - Could not add audio input")
                         }
+                        
                         // Add Video File Output
                         self.videoOutput = AVCaptureMovieFileOutput()
                         self.videoOutput?.movieFragmentInterval = CMTime.invalid
-                        self.captureSession!.addOutput(self.videoOutput!)
+                        
+                        // Verify we can add the video output
+                        if self.captureSession!.canAddOutput(self.videoOutput!) {
+                            self.captureSession!.addOutput(self.videoOutput!)
+                            print("VideoRecorder: Video output successfully added")
+                        } else {
+                            print("VideoRecorder: Cannot add video output to session")
+                            call.reject("Cannot add video output to session")
+                            return
+                        }
 
-                        // Set Video quality
+                        // Set Video quality with iPhone 16 Pro specific handling
+                        let sessionPreset: AVCaptureSession.Preset
                         switch(self.quality){
                         case 1:
-                            self.captureSession?.sessionPreset = AVCaptureSession.Preset.hd1280x720
-                            break;
+                            sessionPreset = AVCaptureSession.Preset.hd1280x720
                         case 2:
-                            self.captureSession?.sessionPreset = AVCaptureSession.Preset.hd1920x1080
-                            break;
+                            sessionPreset = AVCaptureSession.Preset.hd1920x1080
                         case 3:
-                            self.captureSession?.sessionPreset = AVCaptureSession.Preset.hd4K3840x2160
-                            break;
+                            sessionPreset = AVCaptureSession.Preset.hd4K3840x2160
                         case 4:
-                            self.captureSession?.sessionPreset = AVCaptureSession.Preset.high
-                            break;
+                            sessionPreset = AVCaptureSession.Preset.high
                         case 5:
-                            self.captureSession?.sessionPreset = AVCaptureSession.Preset.low
-                            break;
+                            sessionPreset = AVCaptureSession.Preset.low
                         case 6:
-                            self.captureSession?.sessionPreset = AVCaptureSession.Preset.cif352x288
-                            break;
+                            sessionPreset = AVCaptureSession.Preset.cif352x288
                         default:
-                            self.captureSession?.sessionPreset = AVCaptureSession.Preset.vga640x480
-                            break;
+                            sessionPreset = AVCaptureSession.Preset.vga640x480
+                        }
+                        
+                        // Check if the session preset is supported by iPhone 16 Pro
+                        if self.captureSession!.canSetSessionPreset(sessionPreset) {
+                            self.captureSession?.sessionPreset = sessionPreset
+                            print("VideoRecorder: Session preset set to: \(sessionPreset.rawValue)")
+                        } else {
+                            // Fallback to highest supported preset for iPhone 16 Pro
+                            let fallbackPresets: [AVCaptureSession.Preset] = [
+                                .hd4K3840x2160,
+                                .hd1920x1080,
+                                .hd1280x720,
+                                .high,
+                                .medium,
+                                .low
+                            ]
+                            
+                            for preset in fallbackPresets {
+                                if self.captureSession!.canSetSessionPreset(preset) {
+                                    self.captureSession?.sessionPreset = preset
+                                    print("VideoRecorder: Using fallback preset: \(preset.rawValue)")
+                                    break
+                                }
+                            }
                         }
 
                         let connection: AVCaptureConnection? = self.videoOutput?.connection(with: .video)
                         self.videoOutput?.setOutputSettings([AVVideoCodecKey : AVVideoCodecType.h264], for: connection!)
 
-                        // Commit configurations
+                        // Commit configurations with error handling for iPhone 16 Pro
+                        print("VideoRecorder: Committing capture session configuration...")
                         self.captureSession?.commitConfiguration()
+                        
+                        // Verify session configuration was successful
+                        if let session = self.captureSession {
+                            print("VideoRecorder: Session configuration complete - Inputs: \(session.inputs.count), Outputs: \(session.outputs.count)")
+                            print("VideoRecorder: Session preset: \(session.sessionPreset.rawValue)")
+                            
+                            // Log all inputs for debugging iPhone 16 Pro issues
+                            for (index, input) in session.inputs.enumerated() {
+                                if let deviceInput = input as? AVCaptureDeviceInput {
+                                    print("VideoRecorder: Input \(index): \(deviceInput.device.deviceType) - \(deviceInput.device.localizedName)")
+                                }
+                            }
+                        }
 
 
                         do {
@@ -516,18 +587,50 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         self.audioLevelTimer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(self.levelTimerCallback(_:)), userInfo: nil, repeats: true)
                         self.audioRecorder?.updateMeters()
 
-                        // Start running sessions
-                        self.captureSession!.startRunning()
+                        // Start running sessions with iPhone 16 Pro specific handling
+                        print("VideoRecorder: Starting capture session...")
+                        
+                        // For iPhone 16 Pro, ensure session starts on main queue
+                        DispatchQueue.main.async {
+                            if let session = self.captureSession, !session.isRunning {
+                                session.startRunning()
+                                
+                                // Verify session actually started
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    if session.isRunning {
+                                        print("VideoRecorder: Capture session successfully started - Running: \(session.isRunning)")
+                                        
+                                        // Additional verification for iPhone 16 Pro camera activation
+                                        if let cameraInput = self.cameraInput {
+                                            print("VideoRecorder: Camera device active: \(cameraInput.device.deviceType)")
+                                        }
+                                    } else {
+                                        print("VideoRecorder: WARNING - Capture session failed to start!")
+                                        // Attempt to restart session for iPhone 16 Pro
+                                        session.startRunning()
+                                    }
+                                }
+                            }
+                        }
 
                         // Initialize camera view
                         self.initializeCameraView()
 
                         if autoShow {
                             self.cameraView.isHidden = false
+                            print("VideoRecorder: Camera view auto-shown")
                         }
                         
                         // Log camera capabilities for debugging iPhone 16 Pro issues
                         self.logCameraCapabilities()
+                        
+                        // Additional delay for iPhone 16 Pro to ensure preview appears
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            if self.cameraView.isHidden == false {
+                                self.refreshCameraPreview()
+                                print("VideoRecorder: Delayed preview refresh completed")
+                            }
+                        }
 
                     } catch CaptureError.backCameraUnavailable {
                         print("VideoRecorder: Initialize failed - Back camera unavailable")
@@ -711,10 +814,22 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
             
             // Configure triple camera systems
             if device.deviceType == .builtInTripleCamera {
-                // Set initial zoom factor to 2x to avoid ultra-wide fisheye effect
-                if device.videoZoomFactor < 2.0 && device.maxAvailableVideoZoomFactor >= 2.0 {
-                    device.videoZoomFactor = 2.0
-                    print("VideoRecorder: Set zoom factor to 2x for triple camera")
+                // For iPhone 16 Pro, start with 1x zoom instead of 2x to ensure camera starts properly
+                if device.videoZoomFactor != 1.0 && device.minAvailableVideoZoomFactor <= 1.0 {
+                    device.videoZoomFactor = 1.0
+                    print("VideoRecorder: Set zoom factor to 1x for triple camera initial setup")
+                }
+                
+                // Configure focus mode for better iPhone 16 Pro performance
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                    print("VideoRecorder: Set continuous auto focus for triple camera")
+                }
+                
+                // Configure exposure mode
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                    print("VideoRecorder: Set continuous auto exposure for triple camera")
                 }
                 
                 // Note: primaryConstituentDeviceSwitchingBehavior is read-only and automatically managed by the system
@@ -725,6 +840,12 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
             
             // Configure dual wide camera systems 
             else if device.deviceType == .builtInDualWideCamera {
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
                 if #available(iOS 15.0, *) {
                     print("VideoRecorder: Dual wide camera auto switching behavior: \(device.primaryConstituentDeviceSwitchingBehavior.rawValue)")
                 }
@@ -732,12 +853,30 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
             
             // Configure dual camera systems
             else if device.deviceType == .builtInDualCamera {
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
                 if #available(iOS 15.0, *) {
                     print("VideoRecorder: Dual camera auto switching behavior: \(device.primaryConstituentDeviceSwitchingBehavior.rawValue)")
                 }
             }
             
+            // Configure standard wide angle camera
+            else if device.deviceType == .builtInWideAngleCamera {
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
+                print("VideoRecorder: Configured standard wide angle camera")
+            }
+            
             device.unlockForConfiguration()
+            print("VideoRecorder: Device configuration completed successfully")
         } catch {
             print("VideoRecorder: Failed to configure camera device: \(error)")
         }
@@ -863,7 +1002,8 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
     @objc func showPreviewFrame(_ call: CAPPluginCall) {
         if (self.captureSession != nil) {
             DispatchQueue.main.async {
-                self.cameraView.isHidden = true
+                self.cameraView.isHidden = false
+                print("VideoRecorder: Preview frame shown")
                 call.resolve()
             }
         }
@@ -875,7 +1015,8 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
     @objc func hidePreviewFrame(_ call: CAPPluginCall) {
         if (self.captureSession != nil) {
             DispatchQueue.main.async {
-                self.cameraView.isHidden = false
+                self.cameraView.isHidden = true
+                print("VideoRecorder: Preview frame hidden")
                 call.resolve()
             }
         }
@@ -886,7 +1027,11 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         self.cameraView.isHidden = true
         self.cameraView.autoresizingMask = [.flexibleWidth, .flexibleHeight];
         self.captureVideoPreviewLayer = AVCaptureVideoPreviewLayer(session: self.captureSession!)
-        self.captureVideoPreviewLayer?.frame = self.cameraView.bounds
+        
+        // Ensure preview layer frame is properly set for iPhone 16 Pro
+        self.captureVideoPreviewLayer?.frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+        self.captureVideoPreviewLayer?.videoGravity = AVLayerVideoGravity.resizeAspectFill
+        
         self.cameraView.addPreviewLayer(self.captureVideoPreviewLayer)
 
         self.cameraView.backgroundColor = UIColor.black
@@ -897,6 +1042,13 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         self.capWebView!.superview!.insertSubview(self.cameraView, belowSubview: self.capWebView!)
 
         self.updateCameraView(self.currentFrameConfig)
+        
+        // Force initial layout update for iPhone 16 Pro compatibility
+        DispatchQueue.main.async {
+            self.cameraView.setNeedsLayout()
+            self.cameraView.layoutIfNeeded()
+            print("VideoRecorder: Camera view initialized and laid out")
+        }
     }
 
     func updateCameraView(_ config: FrameConfig) {
@@ -905,6 +1057,9 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         let height = config.height as? String == "fill" ? UIScreen.main.bounds.height : config.height as! CGFloat
         self.cameraView.frame = CGRect(x: config.x, y: config.y, width: width, height: height)
 
+        // Update preview layer frame to match camera view bounds
+        self.cameraView.videoPreviewLayer?.frame = self.cameraView.bounds
+        
         // Set stackPosition
         if config.stackPosition == "front" {
             self.capWebView!.superview!.bringSubviewToFront(self.cameraView)
@@ -929,6 +1084,8 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         
         // Refresh camera preview layer for iPhone 16 Pro compatibility
         self.refreshCameraPreview()
+        
+        print("VideoRecorder: Camera view updated - Frame: \(self.cameraView.frame), Hidden: \(self.cameraView.isHidden)")
     }
     
     func refreshCameraPreview() {
@@ -938,11 +1095,18 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                 previewLayer.setNeedsLayout()
                 previewLayer.layoutIfNeeded()
                 
-                // Ensure the connection is properly configured
+                // Ensure the connection is properly configured for iPhone 16 Pro
                 if let connection = previewLayer.connection {
                     connection.isEnabled = false
-                    connection.isEnabled = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        connection.isEnabled = true
+                        print("VideoRecorder: Preview connection re-enabled")
+                    }
                 }
+                
+                // Force frame update
+                previewLayer.frame = self.cameraView?.bounds ?? CGRect.zero
+                print("VideoRecorder: Preview layer refreshed - Frame: \(previewLayer.frame)")
             }
         }
     }
