@@ -526,6 +526,38 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                             return
                         }
 
+                        // Add session interruption observers for iPhone 16 Pro compatibility
+                        NotificationCenter.default.addObserver(
+                            forName: .AVCaptureSessionWasInterrupted,
+                            object: session,
+                            queue: .main
+                        ) { notification in
+                            print("VideoRecorder: Session was interrupted")
+                            if let reasonValue = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int,
+                               let reason = AVCaptureSession.InterruptionReason(rawValue: reasonValue) {
+                                print("VideoRecorder: Interruption reason: \(reason)")
+                            }
+                        }
+                        
+                        NotificationCenter.default.addObserver(
+                            forName: .AVCaptureSessionInterruptionEnded,
+                            object: session,
+                            queue: .main
+                        ) { notification in
+                            print("VideoRecorder: Session interruption ended")
+                        }
+
+                        NotificationCenter.default.addObserver(
+                            forName: .AVCaptureSessionRuntimeError,
+                            object: session,
+                            queue: .main
+                        ) { notification in
+                            print("VideoRecorder: Session runtime error")
+                            if let error = notification.userInfo?[AVCaptureSessionErrorKey] as? Error {
+                                print("VideoRecorder: Runtime error: \(error)")
+                            }
+                        }
+
                         print("VideoRecorder: AVCaptureSession created successfully")
                         if #available(iOS 16.0, *) {
                             print("VideoRecorder: Session supports multi-cam: \(session.isMultitaskingCameraAccessSupported)")
@@ -833,27 +865,139 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         self.audioLevelTimer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(self.levelTimerCallback(_:)), userInfo: nil, repeats: true)
                         self.audioRecorder?.updateMeters()
 
-                        // Start running sessions synchronously for iPhone 16 Pro compatibility
-                        print("VideoRecorder: Starting capture session synchronously...")
-
-                        // Start session synchronously on main thread
+                        // Enhanced session startup with iPhone 16 Pro + iOS 18 compatibility
+                        print("VideoRecorder: === ENHANCED SESSION STARTUP ===")
+                        
                         if let session = self.captureSession {
-                            session.startRunning()
+                            // Pre-startup diagnostics
+                            print("VideoRecorder: Pre-startup session state:")
+                            print("VideoRecorder: - Session can start running: \(session.canSetSessionPreset(session.sessionPreset))")
+                            print("VideoRecorder: - Session interrupted: \(session.isInterrupted)")
+                            print("VideoRecorder: - Session running: \(session.isRunning)")
                             
-                            print("VideoRecorder: Session start completed - Running: \(session.isRunning)")
+                            // Check for potential blocking conditions on iPhone 16 Pro
+                            var startupAttempts = 0
+                            let maxAttempts = 3
+                            var sessionStarted = false
                             
-                            if session.isRunning {
-                                print("VideoRecorder: SUCCESS - Capture session started successfully!")
+                            while !sessionStarted && startupAttempts < maxAttempts {
+                                startupAttempts += 1
+                                print("VideoRecorder: Session startup attempt \(startupAttempts)/\(maxAttempts)")
                                 
-                                // Additional verification for iPhone 16 Pro camera activation
-                                if let cameraInput = self.cameraInput {
-                                    print("VideoRecorder: Camera device active: \(cameraInput.device.deviceType)")
+                                // For iPhone 16 Pro, ensure session is completely stopped before starting
+                                if session.isRunning {
+                                    print("VideoRecorder: Session unexpectedly running, stopping first...")
+                                    session.stopRunning()
+                                    // Brief pause to ensure full stop
+                                    usleep(100000) // 100ms
                                 }
-                            } else {
-                                print("VideoRecorder: CRITICAL ERROR - Session failed to start!")
-                                call.reject("Failed to start camera session")
+                                
+                                // Add session interruption handling for iPhone 16 Pro
+                                if session.isInterrupted {
+                                    print("VideoRecorder: Session is interrupted, waiting for restoration...")
+                                    // Wait for interruption to clear
+                                    var waitCount = 0
+                                    while session.isInterrupted && waitCount < 10 {
+                                        usleep(100000) // 100ms
+                                        waitCount += 1
+                                    }
+                                    
+                                    if session.isInterrupted {
+                                        print("VideoRecorder: Session interruption did not clear after 1 second")
+                                        if startupAttempts == maxAttempts {
+                                            call.reject("Camera session interrupted and could not be restored")
+                                            return
+                                        }
+                                        continue
+                                    }
+                                }
+                                
+                                // Try different approaches for iPhone 16 Pro camera startup
+                                if startupAttempts == 1 {
+                                    print("VideoRecorder: Attempt 1 - Direct session start")
+                                    session.startRunning()
+                                } else if startupAttempts == 2 {
+                                    print("VideoRecorder: Attempt 2 - Session start with preset reset")
+                                    session.beginConfiguration()
+                                    let currentPreset = session.sessionPreset
+                                    session.sessionPreset = .medium  // Safe fallback
+                                    session.commitConfiguration()
+                                    session.startRunning()
+                                    // Wait and check if it started
+                                    usleep(200000) // 200ms
+                                    if !session.isRunning {
+                                        // Restore original preset and try again
+                                        session.beginConfiguration()
+                                        session.sessionPreset = currentPreset
+                                        session.commitConfiguration()
+                                        session.startRunning()
+                                    }
+                                } else if startupAttempts == 3 {
+                                    print("VideoRecorder: Attempt 3 - Minimal configuration with input priority preset")
+                                    session.beginConfiguration()
+                                    session.sessionPreset = .inputPriority
+                                    session.commitConfiguration()
+                                    session.startRunning()
+                                }
+                                
+                                // Give session time to start on iPhone 16 Pro
+                                usleep(300000) // 300ms
+                                
+                                print("VideoRecorder: Session start attempt \(startupAttempts) completed - Running: \(session.isRunning)")
+                                
+                                if session.isRunning {
+                                    sessionStarted = true
+                                    print("VideoRecorder: SUCCESS - Session started on attempt \(startupAttempts)")
+                                    
+                                    // Additional verification for iPhone 16 Pro camera activation
+                                    if let cameraInput = self.cameraInput {
+                                        print("VideoRecorder: Camera device active: \(cameraInput.device.deviceType)")
+                                        print("VideoRecorder: Camera device connected: \(cameraInput.device.isConnected)")
+                                        
+                                        // Verify camera is actually responding
+                                        do {
+                                            try cameraInput.device.lockForConfiguration()
+                                            print("VideoRecorder: Camera device configuration lock successful")
+                                            cameraInput.device.unlockForConfiguration()
+                                        } catch {
+                                            print("VideoRecorder: WARNING - Camera device not responding: \(error)")
+                                        }
+                                    }
+                                    
+                                    // Final session state verification
+                                    print("VideoRecorder: Final session verification:")
+                                    print("VideoRecorder: - Running: \(session.isRunning)")
+                                    print("VideoRecorder: - Interrupted: \(session.isInterrupted)")
+                                    print("VideoRecorder: - Preset: \(session.sessionPreset.rawValue)")
+                                    
+                                    break
+                                } else {
+                                    print("VideoRecorder: Session startup attempt \(startupAttempts) failed")
+                                    
+                                    // Enhanced diagnostics for failed attempt
+                                    print("VideoRecorder: Failed attempt diagnostics:")
+                                    print("VideoRecorder: - Session interrupted: \(session.isInterrupted)")
+                                    print("VideoRecorder: - Session preset supported: \(session.canSetSessionPreset(session.sessionPreset))")
+                                    print("VideoRecorder: - Input count: \(session.inputs.count)")
+                                    print("VideoRecorder: - Output count: \(session.outputs.count)")
+                                    
+                                    // Check if camera device is still available
+                                    if let cameraInput = self.cameraInput {
+                                        print("VideoRecorder: - Camera still connected: \(cameraInput.device.isConnected)")
+                                    }
+                                }
+                            }
+                            
+                            if !sessionStarted {
+                                print("VideoRecorder: CRITICAL ERROR - All session startup attempts failed!")
+                                print("VideoRecorder: This appears to be an iPhone 16 Pro + iOS 18 compatibility issue")
+                                call.reject("Camera session failed to start after multiple attempts - iPhone 16 Pro compatibility issue")
                                 return
                             }
+                        } else {
+                            print("VideoRecorder: CRITICAL ERROR - No capture session available")
+                            call.reject("No capture session available")
+                            return
                         }
 
                         // Initialize camera view
