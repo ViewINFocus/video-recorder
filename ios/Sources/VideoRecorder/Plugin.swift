@@ -833,31 +833,26 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         self.audioLevelTimer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(self.levelTimerCallback(_:)), userInfo: nil, repeats: true)
                         self.audioRecorder?.updateMeters()
 
-                        // Start running sessions with iPhone 16 Pro specific handling
-                        print("VideoRecorder: Starting capture session...")
+                        // Start running sessions synchronously for iPhone 16 Pro compatibility
+                        print("VideoRecorder: Starting capture session synchronously...")
 
-                        // For iPhone 16 Pro, start session immediately and handle startup verification
+                        // Start session synchronously on main thread
                         if let session = self.captureSession {
-                            // Start session on background queue to avoid blocking
-                            DispatchQueue.global(qos: .userInitiated).async {
-                                session.startRunning()
-
-                                // Verify session started on main queue
-                                DispatchQueue.main.async {
-                                    if session.isRunning {
-                                        print("VideoRecorder: Capture session successfully started - Running: \(session.isRunning)")
-
-                                        // Additional verification for iPhone 16 Pro camera activation
-                                        if let cameraInput = self.cameraInput {
-                                            print("VideoRecorder: Camera device active: \(cameraInput.device.deviceType)")
-                                        }
-                                    } else {
-                                        print("VideoRecorder: WARNING - Capture session failed to start!")
-
-                                        // For iPhone 16 Pro, try different session presets if initial startup fails
-                                        self.retrySessionStartupForIPhone16Pro()
-                                    }
+                            session.startRunning()
+                            
+                            print("VideoRecorder: Session start completed - Running: \(session.isRunning)")
+                            
+                            if session.isRunning {
+                                print("VideoRecorder: SUCCESS - Capture session started successfully!")
+                                
+                                // Additional verification for iPhone 16 Pro camera activation
+                                if let cameraInput = self.cameraInput {
+                                    print("VideoRecorder: Camera device active: \(cameraInput.device.deviceType)")
                                 }
+                            } else {
+                                print("VideoRecorder: CRITICAL ERROR - Session failed to start!")
+                                call.reject("Failed to start camera session")
+                                return
                             }
                         }
 
