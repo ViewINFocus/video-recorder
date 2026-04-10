@@ -229,9 +229,21 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
      */
     public func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
         self.durationTimer?.invalidate()
-        self.stopRecordingCall?.resolve([
-            "videoUrl": self.bridge?.portablePath(fromLocalURL: outputFileURL)?.absoluteString as Any
-        ])
+        let videoUrl = self.bridge?.portablePath(fromLocalURL: outputFileURL)?.absoluteString ?? ""
+
+        if let call = self.stopRecordingCall {
+            // User-initiated stop
+            call.resolve(["videoUrl": videoUrl])
+            self.stopRecordingCall = nil
+        } else {
+            // System-initiated stop (e.g., phone call interruption)
+            // stopRecordingCall is nil because the user never called stopRecording()
+            // Notify JS so it can handle the auto-saved video and reset UI state
+            self.notifyListeners("recordingStopped", data: [
+                "videoUrl": videoUrl,
+                "reason": "interrupted"
+            ])
+        }
     }
 
     @objc func levelTimerCallback(_ timer: Timer?) {

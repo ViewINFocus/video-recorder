@@ -29,6 +29,10 @@ export interface VideoRecorderPlugin {
     eventName: 'audioStatusChanged',
     listenerFunc: (event: { hasAudio: boolean; reason: AudioStatusReason }) => void,
   ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'recordingStopped',
+    listenerFunc: (event: { videoUrl: string; reason: 'interrupted' }) => void,
+  ): Promise<PluginListenerHandle>;
 }
 
 export type AudioStatusReason =
