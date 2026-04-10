@@ -1,7 +1,7 @@
 import type { PluginListenerHandle } from '@capacitor/core';
 
 export interface VideoRecorderPlugin {
-  initialize(options?: VideoRecorderOptions): Promise<void>;
+  initialize(options?: VideoRecorderOptions): Promise<{ hasAudio: boolean }>;
   destroy(): Promise<void>;
   flipCamera(): Promise<void>;
   toggleFlash(): Promise<void>;
@@ -25,7 +25,18 @@ export interface VideoRecorderPlugin {
     eventName: 'onVolumeInput',
     listenerFunc: (event: { value: number }) => void,
   ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'audioStatusChanged',
+    listenerFunc: (event: { hasAudio: boolean; reason: AudioStatusReason }) => void,
+  ): Promise<PluginListenerHandle>;
 }
+
+export type AudioStatusReason =
+  | 'phoneCall'
+  | 'userDisabled'
+  | 'microphoneUnavailable'
+  | 'audioSessionFailed'
+  | 'interruptionRecoveryPending';
 export interface VideoRecorderPreviewFrame {
   id: string;
   stackPosition?: 'front' | 'back';
@@ -64,6 +75,19 @@ export interface VideoRecorderOptions {
    * @memberof VideoRecorderOptions
    */
   videoBitrate?: number;
+  /**
+   * Skip audio recording entirely.
+   * When not set, the plugin auto-detects active phone calls and disables audio automatically.
+   *
+   * **iOS:** Audio input is fully skipped — recorded video has no audio track.
+   * **Android:** Informational only. Audio recording is managed by the underlying
+   * FancyCamera library which does not expose an audio toggle. The `hasAudio` return
+   * value and `audioStatusChanged` events reflect the detected state, but the actual
+   * audio track in the recorded video is controlled by FancyCamera/Android OS.
+   *
+   * @default false
+   */
+  disableAudio?: boolean;
 }
 
 export enum VideoRecorderCamera {

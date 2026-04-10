@@ -1,5 +1,5 @@
 # node files
-dist
+# dist — included for GitHub-based installs (no npm publish step)
 node_modules
 
 # iOS files

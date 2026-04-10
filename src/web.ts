@@ -81,7 +81,7 @@ export class VideoRecorderWeb extends WebPlugin implements VideoRecorderPlugin {
 		this.videoElement.style.boxShadow = `0 0 ${config.dropShadow?.radius}px 0 rgba(${config.dropShadow?.color}, ${config.dropShadow?.opacity})`;
 	}
 
-	async initialize(options?: VideoRecorderOptions): Promise<void> {
+	async initialize(options?: VideoRecorderOptions): Promise<{ hasAudio: boolean }> {
 		console.warn('VideoRecorder: Web implementation is currently for mock purposes only, recording is not available');
 		const previewFrames = options?.previewFrames?.length !== undefined && options?.previewFrames?.length > 0 ? options?.previewFrames : [{id: 'default'}];
 		this.previewFrameConfigs = previewFrames?.map(config => new FrameConfig(config)) as any;
@@ -93,11 +93,23 @@ export class VideoRecorderWeb extends WebPlugin implements VideoRecorderPlugin {
 			this.videoElement.hidden = false;
 		}
 
+		let hasAudio = !options?.disableAudio;
 		if (navigator.mediaDevices.getUserMedia) {
-			this.stream = await navigator.mediaDevices.getUserMedia({video: true})
-			this.videoElement.srcObject = this.stream;
+			try {
+				this.stream = await navigator.mediaDevices.getUserMedia({video: true, audio: !options?.disableAudio});
+				this.videoElement.srcObject = this.stream;
+			} catch {
+				// Mic denied or unavailable — fallback to video-only
+				try {
+					this.stream = await navigator.mediaDevices.getUserMedia({video: true});
+					this.videoElement.srcObject = this.stream;
+					hasAudio = false;
+				} catch {
+					// Camera also denied — nothing we can do
+				}
+			}
 		}
-    	return Promise.resolve();
+		return { hasAudio };
 	}
 	destroy(): Promise<any> {
 		this.videoElement?.remove();

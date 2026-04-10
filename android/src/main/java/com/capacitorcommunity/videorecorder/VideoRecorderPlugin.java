@@ -1,6 +1,8 @@
 package com.capacitorcommunity.videorecorder;
 
+import android.content.Context;
 import android.graphics.Color;
+import android.media.AudioManager;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.util.DisplayMetrics;
@@ -48,6 +50,7 @@ public class VideoRecorderPlugin extends Plugin {
     private boolean timerStarted;
     private Integer videoBitrate = 3000000;
     private boolean _isFlashEnabled = false;
+    private boolean isAudioEnabled = true;
     private Integer previousBackgroundColor = null;
 
     PluginCall getCall() {
@@ -59,10 +62,12 @@ public class VideoRecorderPlugin extends Plugin {
         super.handleRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (fancyCamera.hasPermission()) {
+            JSObject result = new JSObject();
+            result.put("hasAudio", isAudioEnabled);
             if (getCall() != null) {
-                getCall().resolve();
+                getCall().resolve(result);
             } else if (savedLastCall != null) {
-                savedLastCall.resolve();
+                savedLastCall.resolve(result);
             }
             startCamera();
         } else {
@@ -115,6 +120,17 @@ public class VideoRecorderPlugin extends Plugin {
         timerStarted = false;
     }
 
+    /**
+     * Check if a phone call is active using AudioManager.getMode().
+     * This does NOT require READ_PHONE_STATE permission (unlike TelephonyManager.getCallState on API 31+).
+     */
+    private boolean isPhoneCallActive() {
+        AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return false;
+        int mode = am.getMode();
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION;
+    }
+
     @Override
     public void load() {
         super.load();
@@ -122,6 +138,11 @@ public class VideoRecorderPlugin extends Plugin {
 
     @PluginMethod()
     public void initialize(final PluginCall call) {
+        if (fancyCamera != null && fancyCamera.cameraStarted()) {
+            call.reject("Already initialized, call destroy() first");
+            return;
+        }
+
         JSObject defaultFrame = new JSObject();
         defaultFrame.put("id", "default");
         currentFrameConfig = new FrameConfig(defaultFrame);
@@ -138,7 +159,9 @@ public class VideoRecorderPlugin extends Plugin {
         fancyCamera.setListener(new CameraEventListenerUI() {
             public void onCameraOpenUI() {
                 if (getCall() != null) {
-                    getCall().resolve();
+                    JSObject result = new JSObject();
+                    result.put("hasAudio", isAudioEnabled);
+                    getCall().resolve(result);
                 }
                 startTimer();
                 updateCameraView(currentFrameConfig);
@@ -235,6 +258,20 @@ public class VideoRecorderPlugin extends Plugin {
             }
         }
 
+        // Detect phone call state and disableAudio option
+        // Uses AudioManager.getMode() instead of TelephonyManager.getCallState()
+        // to avoid READ_PHONE_STATE permission requirement on API 31+
+        boolean disableAudio = Boolean.TRUE.equals(call.getBoolean("disableAudio", false));
+        boolean phoneCallActive = isPhoneCallActive();
+        this.isAudioEnabled = !disableAudio && !phoneCallActive;
+
+        if (!this.isAudioEnabled) {
+            JSObject audioStatus = new JSObject();
+            audioStatus.put("hasAudio", false);
+            audioStatus.put("reason", disableAudio ? "userDisabled" : "phoneCall");
+            notifyListeners("audioStatusChanged", audioStatus);
+        }
+
         if (!fancyCamera.cameraStarted()) {
             startCamera();
         }
@@ -258,7 +295,11 @@ public class VideoRecorderPlugin extends Plugin {
             }
         });
 
+        stopTimer();
+        isAudioEnabled = true;
+        previewFrameConfigs.clear();
         fancyCamera.release();
+        fancyCamera = null;
         call.resolve();
     }
 
@@ -303,6 +344,15 @@ public class VideoRecorderPlugin extends Plugin {
 
     @PluginMethod()
     public void startRecording(PluginCall call) {
+        // Re-check phone call state before recording
+        if (isPhoneCallActive() && this.isAudioEnabled) {
+            this.isAudioEnabled = false;
+            JSObject audioStatus = new JSObject();
+            audioStatus.put("hasAudio", false);
+            audioStatus.put("reason", "phoneCall");
+            notifyListeners("audioStatusChanged", audioStatus);
+        }
+
         fancyCamera.setAutoFocus(true);
 
         // turn on flash if flash is enabled and camera is back camera
