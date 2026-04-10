@@ -146,7 +146,9 @@ The demo app can be found in the Example folder of this repo
 * [`stopRecording()`](#stoprecording)
 * [`getDuration()`](#getduration)
 * [`addListener('onVolumeInput', ...)`](#addlisteneronvolumeinput-)
+* [`addListener('audioStatusChanged', ...)`](#addlisteneraudiostatuschanged-)
 * [Interfaces](#interfaces)
+* [Type Aliases](#type-aliases)
 * [Enums](#enums)
 
 </docgen-index>
@@ -157,12 +159,14 @@ The demo app can be found in the Example folder of this repo
 ### initialize(...)
 
 ```typescript
-initialize(options?: VideoRecorderOptions | undefined) => Promise<void>
+initialize(options?: VideoRecorderOptions | undefined) => Promise<{ hasAudio: boolean; }>
 ```
 
 | Param         | Type                                                                  |
 | ------------- | --------------------------------------------------------------------- |
 | **`options`** | <code><a href="#videorecorderoptions">VideoRecorderOptions</a></code> |
+
+**Returns:** <code>Promise&lt;{ hasAudio: boolean; }&gt;</code>
 
 --------------------
 
@@ -342,18 +346,35 @@ addListener(eventName: 'onVolumeInput', listenerFunc: (event: { value: number; }
 --------------------
 
 
+### addListener('audioStatusChanged', ...)
+
+```typescript
+addListener(eventName: 'audioStatusChanged', listenerFunc: (event: { hasAudio: boolean; reason: AudioStatusReason; }) => void) => Promise<PluginListenerHandle>
+```
+
+| Param              | Type                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'audioStatusChanged'</code>                                                                                   |
+| **`listenerFunc`** | <code>(event: { hasAudio: boolean; reason: <a href="#audiostatusreason">AudioStatusReason</a>; }) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
 ### Interfaces
 
 
 #### VideoRecorderOptions
 
-| Prop                | Type                                                                  | Description                    | Default              |
-| ------------------- | --------------------------------------------------------------------- | ------------------------------ | -------------------- |
-| **`camera`**        | <code><a href="#videorecordercamera">VideoRecorderCamera</a></code>   |                                |                      |
-| **`quality`**       | <code><a href="#videorecorderquality">VideoRecorderQuality</a></code> |                                |                      |
-| **`autoShow`**      | <code>boolean</code>                                                  |                                |                      |
-| **`previewFrames`** | <code>VideoRecorderPreviewFrame[]</code>                              |                                |                      |
-| **`videoBitrate`**  | <code>number</code>                                                   | The default bitrate is 4.5Mbps | <code>4500000</code> |
+| Prop                | Type                                                                  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Default              |
+| ------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **`camera`**        | <code><a href="#videorecordercamera">VideoRecorderCamera</a></code>   |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |                      |
+| **`quality`**       | <code><a href="#videorecorderquality">VideoRecorderQuality</a></code> |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |                      |
+| **`autoShow`**      | <code>boolean</code>                                                  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |                      |
+| **`previewFrames`** | <code>VideoRecorderPreviewFrame[]</code>                              |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |                      |
+| **`videoBitrate`**  | <code>number</code>                                                   | The default bitrate is 4.5Mbps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | <code>4500000</code> |
+| **`disableAudio`**  | <code>boolean</code>                                                  | Skip audio recording entirely. When not set, the plugin auto-detects active phone calls and disables audio automatically. **iOS:** Audio input is fully skipped — recorded video has no audio track. **Android:** Informational only. Audio recording is managed by the underlying FancyCamera library which does not expose an audio toggle. The `hasAudio` return value and `audioStatusChanged` events reflect the detected state, but the actual audio track in the recorded video is controlled by FancyCamera/Android OS. | <code>false</code>   |
 
 
 #### VideoRecorderPreviewFrame
@@ -376,6 +397,14 @@ addListener(eventName: 'onVolumeInput', listenerFunc: (event: { value: number; }
 | Prop         | Type                                      |
 | ------------ | ----------------------------------------- |
 | **`remove`** | <code>() =&gt; Promise&lt;void&gt;</code> |
+
+
+### Type Aliases
+
+
+#### AudioStatusReason
+
+<code>'phoneCall' | 'userDisabled' | 'microphoneUnavailable' | 'audioSessionFailed' | 'interruptionRecoveryPending'</code>
 
 
 ### Enums

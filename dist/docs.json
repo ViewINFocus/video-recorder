@@ -1,0 +1,522 @@
+{
+  "api": {
+    "name": "VideoRecorderPlugin",
+    "slug": "videorecorderplugin",
+    "docs": "",
+    "tags": [],
+    "methods": [
+      {
+        "name": "initialize",
+        "signature": "(options?: VideoRecorderOptions | undefined) => Promise<{ hasAudio: boolean; }>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "VideoRecorderOptions | undefined"
+          }
+        ],
+        "returns": "Promise<{ hasAudio: boolean; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "VideoRecorderOptions"
+        ],
+        "slug": "initialize"
+      },
+      {
+        "name": "destroy",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "destroy"
+      },
+      {
+        "name": "flipCamera",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "flipcamera"
+      },
+      {
+        "name": "toggleFlash",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "toggleflash"
+      },
+      {
+        "name": "enableFlash",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "enableflash"
+      },
+      {
+        "name": "disableFlash",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "disableflash"
+      },
+      {
+        "name": "isFlashAvailable",
+        "signature": "() => Promise<{ isAvailable: boolean; }>",
+        "parameters": [],
+        "returns": "Promise<{ isAvailable: boolean; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "isflashavailable"
+      },
+      {
+        "name": "isFlashEnabled",
+        "signature": "() => Promise<{ isEnabled: boolean; }>",
+        "parameters": [],
+        "returns": "Promise<{ isEnabled: boolean; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "isflashenabled"
+      },
+      {
+        "name": "addPreviewFrameConfig",
+        "signature": "(config: VideoRecorderPreviewFrame) => Promise<void>",
+        "parameters": [
+          {
+            "name": "config",
+            "docs": "",
+            "type": "VideoRecorderPreviewFrame"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "VideoRecorderPreviewFrame"
+        ],
+        "slug": "addpreviewframeconfig"
+      },
+      {
+        "name": "editPreviewFrameConfig",
+        "signature": "(config: VideoRecorderPreviewFrame) => Promise<void>",
+        "parameters": [
+          {
+            "name": "config",
+            "docs": "",
+            "type": "VideoRecorderPreviewFrame"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "VideoRecorderPreviewFrame"
+        ],
+        "slug": "editpreviewframeconfig"
+      },
+      {
+        "name": "switchToPreviewFrame",
+        "signature": "(options: { id: string; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "options",
+            "docs": "",
+            "type": "{ id: string; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "switchtopreviewframe"
+      },
+      {
+        "name": "showPreviewFrame",
+        "signature": "(config: { position: number; quality: number; }) => Promise<void>",
+        "parameters": [
+          {
+            "name": "config",
+            "docs": "",
+            "type": "{ position: number; quality: number; }"
+          }
+        ],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "showpreviewframe"
+      },
+      {
+        "name": "hidePreviewFrame",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "hidepreviewframe"
+      },
+      {
+        "name": "startRecording",
+        "signature": "() => Promise<void>",
+        "parameters": [],
+        "returns": "Promise<void>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "startrecording"
+      },
+      {
+        "name": "stopRecording",
+        "signature": "() => Promise<{ videoUrl: string; }>",
+        "parameters": [],
+        "returns": "Promise<{ videoUrl: string; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "stoprecording"
+      },
+      {
+        "name": "getDuration",
+        "signature": "() => Promise<{ value: number; }>",
+        "parameters": [],
+        "returns": "Promise<{ value: number; }>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [],
+        "slug": "getduration"
+      },
+      {
+        "name": "addListener",
+        "signature": "(eventName: 'onVolumeInput', listenerFunc: (event: { value: number; }) => void) => Promise<PluginListenerHandle>",
+        "parameters": [
+          {
+            "name": "eventName",
+            "docs": "",
+            "type": "'onVolumeInput'"
+          },
+          {
+            "name": "listenerFunc",
+            "docs": "",
+            "type": "(event: { value: number; }) => void"
+          }
+        ],
+        "returns": "Promise<PluginListenerHandle>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "PluginListenerHandle"
+        ],
+        "slug": "addlisteneronvolumeinput-"
+      },
+      {
+        "name": "addListener",
+        "signature": "(eventName: 'audioStatusChanged', listenerFunc: (event: { hasAudio: boolean; reason: AudioStatusReason; }) => void) => Promise<PluginListenerHandle>",
+        "parameters": [
+          {
+            "name": "eventName",
+            "docs": "",
+            "type": "'audioStatusChanged'"
+          },
+          {
+            "name": "listenerFunc",
+            "docs": "",
+            "type": "(event: { hasAudio: boolean; reason: AudioStatusReason; }) => void"
+          }
+        ],
+        "returns": "Promise<PluginListenerHandle>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "PluginListenerHandle",
+          "AudioStatusReason"
+        ],
+        "slug": "addlisteneraudiostatuschanged-"
+      }
+    ],
+    "properties": []
+  },
+  "interfaces": [
+    {
+      "name": "VideoRecorderOptions",
+      "slug": "videorecorderoptions",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "camera",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [
+            "VideoRecorderCamera"
+          ],
+          "type": "VideoRecorderCamera"
+        },
+        {
+          "name": "quality",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [
+            "VideoRecorderQuality"
+          ],
+          "type": "VideoRecorderQuality"
+        },
+        {
+          "name": "autoShow",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "boolean | undefined"
+        },
+        {
+          "name": "previewFrames",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [
+            "VideoRecorderPreviewFrame"
+          ],
+          "type": "VideoRecorderPreviewFrame[] | undefined"
+        },
+        {
+          "name": "videoBitrate",
+          "tags": [
+            {
+              "text": "4500000",
+              "name": "default"
+            },
+            {
+              "text": "{number}",
+              "name": "type"
+            },
+            {
+              "text": "VideoRecorderOptions",
+              "name": "memberof"
+            }
+          ],
+          "docs": "The default bitrate is 4.5Mbps",
+          "complexTypes": [],
+          "type": "number | undefined"
+        },
+        {
+          "name": "disableAudio",
+          "tags": [
+            {
+              "text": "false",
+              "name": "default"
+            }
+          ],
+          "docs": "Skip audio recording entirely.\nWhen not set, the plugin auto-detects active phone calls and disables audio automatically.\n\n**iOS:** Audio input is fully skipped — recorded video has no audio track.\n**Android:** Informational only. Audio recording is managed by the underlying\nFancyCamera library which does not expose an audio toggle. The `hasAudio` return\nvalue and `audioStatusChanged` events reflect the detected state, but the actual\naudio track in the recorded video is controlled by FancyCamera/Android OS.",
+          "complexTypes": [],
+          "type": "boolean | undefined"
+        }
+      ]
+    },
+    {
+      "name": "VideoRecorderPreviewFrame",
+      "slug": "videorecorderpreviewframe",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "id",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "string"
+        },
+        {
+          "name": "stackPosition",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "'front' | 'back' | undefined"
+        },
+        {
+          "name": "x",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number | undefined"
+        },
+        {
+          "name": "y",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number | undefined"
+        },
+        {
+          "name": "width",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number | 'fill' | undefined"
+        },
+        {
+          "name": "height",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number | 'fill' | undefined"
+        },
+        {
+          "name": "borderRadius",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "number | undefined"
+        },
+        {
+          "name": "dropShadow",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "{ opacity?: number | undefined; radius?: number | undefined; color?: string | undefined; } | undefined"
+        },
+        {
+          "name": "mirrorFrontCam",
+          "tags": [
+            {
+              "text": "true",
+              "name": "default"
+            }
+          ],
+          "docs": "Whether to mirror the front camera preview horizontally. Only applies to front camera.",
+          "complexTypes": [],
+          "type": "boolean | undefined"
+        }
+      ]
+    },
+    {
+      "name": "PluginListenerHandle",
+      "slug": "pluginlistenerhandle",
+      "docs": "",
+      "tags": [],
+      "methods": [],
+      "properties": [
+        {
+          "name": "remove",
+          "tags": [],
+          "docs": "",
+          "complexTypes": [],
+          "type": "() => Promise<void>"
+        }
+      ]
+    }
+  ],
+  "enums": [
+    {
+      "name": "VideoRecorderCamera",
+      "slug": "videorecordercamera",
+      "members": [
+        {
+          "name": "FRONT",
+          "value": "0",
+          "tags": [],
+          "docs": ""
+        },
+        {
+          "name": "BACK",
+          "value": "1",
+          "tags": [],
+          "docs": ""
+        }
+      ]
+    },
+    {
+      "name": "VideoRecorderQuality",
+      "slug": "videorecorderquality",
+      "members": [
+        {
+          "name": "MAX_480P",
+          "value": "0",
+          "tags": [],
+          "docs": ""
+        },
+        {
+          "name": "MAX_720P",
+          "value": "1",
+          "tags": [],
+          "docs": ""
+        },
+        {
+          "name": "MAX_1080P",
+          "value": "2",
+          "tags": [],
+          "docs": ""
+        },
+        {
+          "name": "MAX_2160P",
+          "value": "3",
+          "tags": [],
+          "docs": ""
+        },
+        {
+          "name": "HIGHEST",
+          "value": "4",
+          "tags": [],
+          "docs": ""
+        },
+        {
+          "name": "LOWEST",
+          "value": "5",
+          "tags": [],
+          "docs": ""
+        },
+        {
+          "name": "QVGA",
+          "value": "6",
+          "tags": [],
+          "docs": ""
+        }
+      ]
+    }
+  ],
+  "typeAliases": [
+    {
+      "name": "AudioStatusReason",
+      "slug": "audiostatusreason",
+      "docs": "",
+      "types": [
+        {
+          "text": "'phoneCall'",
+          "complexTypes": []
+        },
+        {
+          "text": "'userDisabled'",
+          "complexTypes": []
+        },
+        {
+          "text": "'microphoneUnavailable'",
+          "complexTypes": []
+        },
+        {
+          "text": "'audioSessionFailed'",
+          "complexTypes": []
+        },
+        {
+          "text": "'interruptionRecoveryPending'",
+          "complexTypes": []
+        }
+      ]
+    }
+  ],
+  "pluginConfigs": []
+}
