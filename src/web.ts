@@ -94,7 +94,7 @@ export class VideoRecorderWeb extends WebPlugin implements VideoRecorderPlugin {
 		}
 
 		if (navigator.mediaDevices.getUserMedia) {
-			this.stream = await navigator.mediaDevices.getUserMedia({video: !options?.disableAudio, audio: !options?.disableAudio})
+			this.stream = await navigator.mediaDevices.getUserMedia({video: true, audio: !options?.disableAudio})
 			this.videoElement.srcObject = this.stream;
 		}
 		return { hasAudio: !options?.disableAudio };
