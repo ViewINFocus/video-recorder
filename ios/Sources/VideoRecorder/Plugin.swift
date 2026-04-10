@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CallKit
 import Capacitor
 
 extension UIColor {
@@ -97,7 +98,7 @@ class CameraView: UIView {
     }
 }
 
-public func checkAuthorizationStatus(_ call: CAPPluginCall) -> Bool {
+public func checkAuthorizationStatus(_ call: CAPPluginCall, checkAudio: Bool = true) -> Bool {
     let videoStatus = AVCaptureDevice.authorizationStatus(for: AVMediaType.video)
     if (videoStatus == AVAuthorizationStatus.restricted) {
         call.reject("Camera access restricted")
@@ -106,13 +107,15 @@ public func checkAuthorizationStatus(_ call: CAPPluginCall) -> Bool {
         call.reject("Camera access denied")
         return false
     }
-    let audioStatus = AVCaptureDevice.authorizationStatus(for: AVMediaType.audio)
-    if (audioStatus == AVAuthorizationStatus.restricted) {
-        call.reject("Microphone access restricted")
-        return false
-    } else if audioStatus == AVAuthorizationStatus.denied {
-        call.reject("Microphone access denied")
-        return false
+    if checkAudio {
+        let audioStatus = AVCaptureDevice.authorizationStatus(for: AVMediaType.audio)
+        if (audioStatus == AVAuthorizationStatus.restricted) {
+            call.reject("Microphone access restricted")
+            return false
+        } else if audioStatus == AVAuthorizationStatus.denied {
+            call.reject("Microphone access denied")
+            return false
+        }
     }
     return true
 }
@@ -204,6 +207,13 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
 
     var stopRecordingCall: CAPPluginCall?
 
+    // Phone call detection and audio state
+    private let callObserver = CXCallObserver()
+    private var isAudioEnabled = true
+    private var hasActivePhoneCall: Bool {
+        return callObserver.currentCalls.contains(where: { !$0.hasEnded })
+    }
+
     var previewFrameConfigs: [FrameConfig] = []
     var currentFrameConfig: FrameConfig = FrameConfig(["id": "default"])
 
@@ -225,10 +235,33 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
     }
 
     @objc func levelTimerCallback(_ timer: Timer?) {
-        self.audioRecorder?.updateMeters()
-        // let peakDecebels: Float = (self.audioRecorder?.peakPower(forChannel: 1))!
-        let averagePower: Float = (self.audioRecorder?.averagePower(forChannel: 1))!
-        self.notifyListeners("onVolumeInput", data: ["value":averagePower])
+        guard let recorder = self.audioRecorder else { return }
+        recorder.updateMeters()
+        let averagePower: Float = recorder.averagePower(forChannel: 0)
+        self.notifyListeners("onVolumeInput", data: ["value": averagePower])
+    }
+
+    @objc func sessionWasInterrupted(_ notification: Notification) {
+        guard let reasonValue = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int,
+              let reason = AVCaptureSession.InterruptionReason(rawValue: reasonValue) else { return }
+
+        if reason == .audioDeviceInUseByAnotherClient || reason == .videoDeviceInUseByAnotherClient {
+            self.isAudioEnabled = false
+            self.audioLevelTimer?.invalidate()
+            self.audioLevelTimer = nil
+            self.audioRecorder?.stop()
+            self.notifyListeners("audioStatusChanged", data: [
+                "hasAudio": false,
+                "reason": "phoneCall"
+            ])
+        }
+    }
+
+    @objc func sessionInterruptionEnded(_ notification: Notification) {
+        self.notifyListeners("audioStatusChanged", data: [
+            "hasAudio": false,
+            "reason": "interruptionRecoveryPending"
+        ])
     }
 
 
@@ -251,7 +284,11 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
             }
             self.currentFrameConfig = self.previewFrameConfigs.first!
 
-            if checkAuthorizationStatus(call) {
+            let disableAudio = call.getBool("disableAudio", false)
+            let phoneCallActive = self.hasActivePhoneCall
+            let skipAudioCheck = disableAudio || phoneCallActive
+
+            if checkAuthorizationStatus(call, checkAudio: !skipAudioCheck) {
                 DispatchQueue.main.async {
                     do {
                         // Set webview to transparent and set the app window background to white
@@ -292,10 +329,27 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         // Add Camera Input
                         self.cameraInput = try createCaptureDeviceInput(currentCamera: self.currentCamera, frontCamera: self.frontCamera, backCamera: self.backCamera)
                         self.captureSession!.addInput(self.cameraInput!)
-                        // Add Microphone Input
-                        let microphone = AVCaptureDevice.default(for: .audio)
-                        if let audioInput = try? AVCaptureDeviceInput(device: microphone!), (self.captureSession?.canAddInput(audioInput))! {
+                        // Add Microphone Input (skip if on phone call, user disabled audio, or mic unavailable)
+                        if !disableAudio && !phoneCallActive,
+                           let microphone = AVCaptureDevice.default(for: .audio),
+                           let audioInput = try? AVCaptureDeviceInput(device: microphone),
+                           self.captureSession?.canAddInput(audioInput) == true {
                             self.captureSession!.addInput(audioInput)
+                            self.isAudioEnabled = true
+                        } else {
+                            self.isAudioEnabled = false
+                            let reason: String
+                            if disableAudio {
+                                reason = "userDisabled"
+                            } else if phoneCallActive {
+                                reason = "phoneCall"
+                            } else {
+                                reason = "microphoneUnavailable"
+                            }
+                            self.notifyListeners("audioStatusChanged", data: [
+                                "hasAudio": false,
+                                "reason": reason
+                            ])
                         }
                         // Add Video File Output
                         self.videoOutput = AVCaptureMovieFileOutput()
@@ -334,32 +388,65 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         self.captureSession?.commitConfiguration()
 
 
-                        do {
-                            try AVAudioSession.sharedInstance().setCategory(AVAudioSession.Category.playAndRecord, mode: AVAudioSession.Mode.default, options: [
-                                .mixWithOthers,
-                                .defaultToSpeaker,
-                                .allowBluetoothA2DP,
-                                .allowAirPlay
-                            ])
-                        } catch {
-                            print("Failed to set audio session category.")
+                        if self.isAudioEnabled {
+                            do {
+                                try AVAudioSession.sharedInstance().setCategory(AVAudioSession.Category.playAndRecord, mode: AVAudioSession.Mode.default, options: [
+                                    .mixWithOthers,
+                                    .defaultToSpeaker,
+                                    .allowBluetoothA2DP,
+                                    .allowAirPlay
+                                ])
+                                try AVAudioSession.sharedInstance().setActive(true)
+                            } catch {
+                                print("Failed to configure audio session: \(error)")
+                                self.isAudioEnabled = false
+                                self.notifyListeners("audioStatusChanged", data: [
+                                    "hasAudio": false,
+                                    "reason": "audioSessionFailed"
+                                ])
+                            }
+
+                            if self.isAudioEnabled {
+                                do {
+                                    let settings: [String: Any] = [
+                                        AVSampleRateKey: 44100.0,
+                                        AVFormatIDKey: kAudioFormatAppleLossless,
+                                        AVNumberOfChannelsKey: 2,
+                                        AVEncoderAudioQualityKey: AVAudioQuality.max.rawValue
+                                    ]
+                                    self.audioRecorder = try AVAudioRecorder(url: URL(fileURLWithPath: "/dev/null"), settings: settings)
+                                    self.audioRecorder?.isMeteringEnabled = true
+                                    self.audioRecorder?.prepareToRecord()
+                                    self.audioRecorder?.record()
+                                    self.audioLevelTimer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(self.levelTimerCallback(_:)), userInfo: nil, repeats: true)
+                                    self.audioRecorder?.updateMeters()
+                                } catch {
+                                    print("Failed to create audio recorder: \(error)")
+                                    self.isAudioEnabled = false
+                                    self.notifyListeners("audioStatusChanged", data: [
+                                        "hasAudio": false,
+                                        "reason": "audioSessionFailed"
+                                    ])
+                                }
+                            }
                         }
-                        try? AVAudioSession.sharedInstance().setActive(true)
-                        let settings = [
-                            AVSampleRateKey : 44100.0,
-                            AVFormatIDKey : kAudioFormatAppleLossless,
-                            AVNumberOfChannelsKey : 2,
-                            AVEncoderAudioQualityKey : AVAudioQuality.max.rawValue
-                            ] as [String : Any]
-                        self.audioRecorder = try AVAudioRecorder(url: URL(fileURLWithPath: "/dev/null"), settings: settings)
-                        self.audioRecorder?.isMeteringEnabled = true
-                        self.audioRecorder?.prepareToRecord()
-                        self.audioRecorder?.record()
-                        self.audioLevelTimer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(self.levelTimerCallback(_:)), userInfo: nil, repeats: true)
-                        self.audioRecorder?.updateMeters()
 
                         // Start running sessions
                         self.captureSession!.startRunning()
+
+                        // Observe capture session interruptions (e.g., incoming phone call during recording)
+                        NotificationCenter.default.addObserver(
+                            self,
+                            selector: #selector(self.sessionWasInterrupted(_:)),
+                            name: .AVCaptureSessionWasInterrupted,
+                            object: self.captureSession
+                        )
+                        NotificationCenter.default.addObserver(
+                            self,
+                            selector: #selector(self.sessionInterruptionEnded(_:)),
+                            name: .AVCaptureSessionInterruptionEnded,
+                            object: self.captureSession
+                        )
 
                         // Initialize camera view
                         self.initializeCameraView()
@@ -368,16 +455,21 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                             self.cameraView.isHidden = false
                         }
 
+                        call.resolve(["hasAudio": self.isAudioEnabled])
+
                     } catch CaptureError.backCameraUnavailable {
                         call.reject("Back camera unavailable")
+                        return
                     } catch CaptureError.frontCameraUnavailable {
                         call.reject("Front camera unavailable")
-                    } catch CaptureError.couldNotCaptureInput( _){
+                        return
+                    } catch CaptureError.couldNotCaptureInput(_) {
                         call.reject("Camera unavailable")
+                        return
                     } catch {
                         call.reject("Unexpected error")
+                        return
                     }
-                    call.resolve()
                 }
             }
         }
@@ -403,6 +495,11 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                 if (self.audioRecorder != nil && self.audioRecorder!.isRecording) {
                     self.audioRecorder!.stop()
                 }
+                // Deactivate audio session and remove observers
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+                NotificationCenter.default.removeObserver(self, name: .AVCaptureSessionWasInterrupted, object: nil)
+                NotificationCenter.default.removeObserver(self, name: .AVCaptureSessionInterruptionEnded, object: nil)
+                self.isAudioEnabled = true
                 self.cameraView?.removePreviewLayer()
                 self.captureVideoPreviewLayer = nil
                 self.cameraView?.removeFromSuperview()

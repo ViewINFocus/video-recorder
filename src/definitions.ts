@@ -1,7 +1,7 @@
 import type { PluginListenerHandle } from '@capacitor/core';
 
 export interface VideoRecorderPlugin {
-  initialize(options?: VideoRecorderOptions): Promise<void>;
+  initialize(options?: VideoRecorderOptions): Promise<{ hasAudio?: boolean }>;
   destroy(): Promise<void>;
   flipCamera(): Promise<void>;
   toggleFlash(): Promise<void>;
@@ -24,6 +24,10 @@ export interface VideoRecorderPlugin {
   addListener(
     eventName: 'onVolumeInput',
     listenerFunc: (event: { value: number }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'audioStatusChanged',
+    listenerFunc: (event: { hasAudio: boolean; reason: string }) => void,
   ): Promise<PluginListenerHandle>;
 }
 export interface VideoRecorderPreviewFrame {
@@ -64,6 +68,12 @@ export interface VideoRecorderOptions {
    * @memberof VideoRecorderOptions
    */
   videoBitrate?: number;
+  /**
+   * Skip audio recording entirely. Useful during phone calls or when only video is needed.
+   * When not set, the plugin auto-detects active phone calls and disables audio automatically.
+   * @default false
+   */
+  disableAudio?: boolean;
 }
 
 export enum VideoRecorderCamera {
