@@ -147,6 +147,7 @@ The demo app can be found in the Example folder of this repo
 * [`getDuration()`](#getduration)
 * [`addListener('onVolumeInput', ...)`](#addlisteneronvolumeinput-)
 * [`addListener('audioStatusChanged', ...)`](#addlisteneraudiostatuschanged-)
+* [`addListener('recordingStopped', ...)`](#addlistenerrecordingstopped-)
 * [Interfaces](#interfaces)
 * [Type Aliases](#type-aliases)
 * [Enums](#enums)
@@ -356,6 +357,22 @@ addListener(eventName: 'audioStatusChanged', listenerFunc: (event: { hasAudio: b
 | ------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | **`eventName`**    | <code>'audioStatusChanged'</code>                                                                                   |
 | **`listenerFunc`** | <code>(event: { hasAudio: boolean; reason: <a href="#audiostatusreason">AudioStatusReason</a>; }) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('recordingStopped', ...)
+
+```typescript
+addListener(eventName: 'recordingStopped', listenerFunc: (event: { videoUrl: string; reason: 'interrupted'; }) => void) => Promise<PluginListenerHandle>
+```
+
+| Param              | Type                                                                          |
+| ------------------ | ----------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'recordingStopped'</code>                                               |
+| **`listenerFunc`** | <code>(event: { videoUrl: string; reason: 'interrupted'; }) =&gt; void</code> |
 
 **Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
 

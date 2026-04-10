@@ -247,6 +247,29 @@
           "AudioStatusReason"
         ],
         "slug": "addlisteneraudiostatuschanged-"
+      },
+      {
+        "name": "addListener",
+        "signature": "(eventName: 'recordingStopped', listenerFunc: (event: { videoUrl: string; reason: 'interrupted'; }) => void) => Promise<PluginListenerHandle>",
+        "parameters": [
+          {
+            "name": "eventName",
+            "docs": "",
+            "type": "'recordingStopped'"
+          },
+          {
+            "name": "listenerFunc",
+            "docs": "",
+            "type": "(event: { videoUrl: string; reason: 'interrupted'; }) => void"
+          }
+        ],
+        "returns": "Promise<PluginListenerHandle>",
+        "tags": [],
+        "docs": "",
+        "complexTypes": [
+          "PluginListenerHandle"
+        ],
+        "slug": "addlistenerrecordingstopped-"
       }
     ],
     "properties": []
