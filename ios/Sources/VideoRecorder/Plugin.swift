@@ -261,10 +261,49 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
     }
 
     @objc func sessionInterruptionEnded(_ notification: Notification) {
-        self.notifyListeners("audioStatusChanged", data: [
-            "hasAudio": false,
-            "reason": "interruptionRecoveryPending"
-        ])
+        // Attempt to recover audio after interruption (e.g., phone call ended)
+        // Only recover if we're not currently recording (AVCaptureSession inputs
+        // cannot be reconfigured mid-recording)
+        if self.videoOutput?.isRecording != true {
+            do {
+                try AVAudioSession.sharedInstance().setCategory(
+                    AVAudioSession.Category.playAndRecord,
+                    mode: AVAudioSession.Mode.default,
+                    options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP, .allowAirPlay]
+                )
+                try AVAudioSession.sharedInstance().setActive(true)
+
+                // Restart audio metering if audioRecorder exists
+                if let recorder = self.audioRecorder {
+                    recorder.record()
+                    self.audioLevelTimer = Timer.scheduledTimer(
+                        timeInterval: 0.1,
+                        target: self,
+                        selector: #selector(self.levelTimerCallback(_:)),
+                        userInfo: nil,
+                        repeats: true
+                    )
+                }
+
+                self.isAudioEnabled = true
+                self.notifyListeners("audioStatusChanged", data: [
+                    "hasAudio": true,
+                    "reason": "interruptionRecoveryPending"
+                ])
+            } catch {
+                print("Failed to recover audio session after interruption: \(error)")
+                self.notifyListeners("audioStatusChanged", data: [
+                    "hasAudio": false,
+                    "reason": "interruptionRecoveryPending"
+                ])
+            }
+        } else {
+            // Mid-recording — cannot recover, notify consumer
+            self.notifyListeners("audioStatusChanged", data: [
+                "hasAudio": false,
+                "reason": "interruptionRecoveryPending"
+            ])
+        }
     }
 
 

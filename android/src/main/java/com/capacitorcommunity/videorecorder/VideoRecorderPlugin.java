@@ -2,7 +2,7 @@ package com.capacitorcommunity.videorecorder;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.telephony.TelephonyManager;
+import android.media.AudioManager;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.util.DisplayMetrics;
@@ -62,10 +62,12 @@ public class VideoRecorderPlugin extends Plugin {
         super.handleRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (fancyCamera.hasPermission()) {
+            JSObject result = new JSObject();
+            result.put("hasAudio", isAudioEnabled);
             if (getCall() != null) {
-                getCall().resolve();
+                getCall().resolve(result);
             } else if (savedLastCall != null) {
-                savedLastCall.resolve();
+                savedLastCall.resolve(result);
             }
             startCamera();
         } else {
@@ -116,6 +118,17 @@ public class VideoRecorderPlugin extends Plugin {
             audioFeedbackTimer = null;
         }
         timerStarted = false;
+    }
+
+    /**
+     * Check if a phone call is active using AudioManager.getMode().
+     * This does NOT require READ_PHONE_STATE permission (unlike TelephonyManager.getCallState on API 31+).
+     */
+    private boolean isPhoneCallActive() {
+        AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return false;
+        int mode = am.getMode();
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION;
     }
 
     @Override
@@ -246,9 +259,10 @@ public class VideoRecorderPlugin extends Plugin {
         }
 
         // Detect phone call state and disableAudio option
+        // Uses AudioManager.getMode() instead of TelephonyManager.getCallState()
+        // to avoid READ_PHONE_STATE permission requirement on API 31+
         boolean disableAudio = Boolean.TRUE.equals(call.getBoolean("disableAudio", false));
-        TelephonyManager tm = (TelephonyManager) getContext().getSystemService(Context.TELEPHONY_SERVICE);
-        boolean phoneCallActive = tm != null && tm.getCallState() != TelephonyManager.CALL_STATE_IDLE;
+        boolean phoneCallActive = isPhoneCallActive();
         this.isAudioEnabled = !disableAudio && !phoneCallActive;
 
         if (!this.isAudioEnabled) {
@@ -331,8 +345,7 @@ public class VideoRecorderPlugin extends Plugin {
     @PluginMethod()
     public void startRecording(PluginCall call) {
         // Re-check phone call state before recording
-        TelephonyManager tm = (TelephonyManager) getContext().getSystemService(Context.TELEPHONY_SERVICE);
-        if (tm != null && tm.getCallState() != TelephonyManager.CALL_STATE_IDLE && this.isAudioEnabled) {
+        if (isPhoneCallActive() && this.isAudioEnabled) {
             this.isAudioEnabled = false;
             JSObject audioStatus = new JSObject();
             audioStatus.put("hasAudio", false);
