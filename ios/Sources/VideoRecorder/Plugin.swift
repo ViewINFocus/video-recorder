@@ -211,7 +211,7 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
     private let callObserver = CXCallObserver()
     private var isAudioEnabled = true
     private var hasActivePhoneCall: Bool {
-        return callObserver.currentCalls.contains(where: { !$0.hasEnded })
+        return callObserver.calls.contains(where: { !$0.hasEnded })
     }
 
     var previewFrameConfigs: [FrameConfig] = []
