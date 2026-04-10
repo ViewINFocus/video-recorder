@@ -242,6 +242,9 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
     }
 
     @objc func sessionWasInterrupted(_ notification: Notification) {
+        // Skip if audio is already disabled (avoid duplicate audioStatusChanged events)
+        guard self.isAudioEnabled else { return }
+
         guard let reasonValue = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int,
               let reason = AVCaptureSession.InterruptionReason(rawValue: reasonValue) else { return }
 
@@ -273,7 +276,12 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
         // log to console for initializing
         print("Initializing camera")
 
-        if (self.captureSession?.isRunning != true) {
+        guard self.captureSession?.isRunning != true else {
+            call.reject("Already initialized")
+            return
+        }
+
+        do {
             self.currentCamera = call.getInt("camera", 0)
             self.quality = call.getInt("quality", 0)
             self.videoBitrate = call.getInt("videoBitrate", 3000000)
@@ -387,6 +395,20 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
                         // Commit configurations
                         self.captureSession?.commitConfiguration()
 
+                        // Register interruption observers BEFORE audio setup to avoid race condition
+                        // where a phone call arrives between hasActivePhoneCall check and observer registration
+                        NotificationCenter.default.addObserver(
+                            self,
+                            selector: #selector(self.sessionWasInterrupted(_:)),
+                            name: .AVCaptureSessionWasInterrupted,
+                            object: self.captureSession
+                        )
+                        NotificationCenter.default.addObserver(
+                            self,
+                            selector: #selector(self.sessionInterruptionEnded(_:)),
+                            name: .AVCaptureSessionInterruptionEnded,
+                            object: self.captureSession
+                        )
 
                         if self.isAudioEnabled {
                             do {
@@ -433,20 +455,6 @@ public class VideoRecorder: CAPPlugin, AVCaptureFileOutputRecordingDelegate, CAP
 
                         // Start running sessions
                         self.captureSession!.startRunning()
-
-                        // Observe capture session interruptions (e.g., incoming phone call during recording)
-                        NotificationCenter.default.addObserver(
-                            self,
-                            selector: #selector(self.sessionWasInterrupted(_:)),
-                            name: .AVCaptureSessionWasInterrupted,
-                            object: self.captureSession
-                        )
-                        NotificationCenter.default.addObserver(
-                            self,
-                            selector: #selector(self.sessionInterruptionEnded(_:)),
-                            name: .AVCaptureSessionInterruptionEnded,
-                            object: self.captureSession
-                        )
 
                         // Initialize camera view
                         self.initializeCameraView()
